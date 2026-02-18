@@ -4,6 +4,9 @@ import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Logo from '@/components/Logo'
 import MemberInviteModal from '@/components/MemberInviteModal'
+import { useAuth } from '@/lib/auth-context'
+import { useToast } from '@/components/ui/Toast'
+import { supabase } from '@/lib/supabase'
 import { 
   ArrowLeft, 
   Users, 
@@ -34,9 +37,13 @@ import {
 
 export default function FellowshipManagePage({ params }: { params: { id: string } }) {
   const router = useRouter()
+  const { user } = useAuth()
+  const toast = useToast()
   const [activeTab, setActiveTab] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteUrl, setInviteUrl] = useState<string>('')
+  const [creatingInvite, setCreatingInvite] = useState(false)
 
   // Mock fellowship data
   const fellowshipData = {
@@ -170,6 +177,57 @@ export default function FellowshipManagePage({ params }: { params: { id: string 
 
   const handleInviteMembers = () => {
     setShowInviteModal(true)
+  }
+
+  const handleCreateInvite = async () => {
+    setCreatingInvite(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session || !user) {
+        throw new Error('Please log in to create invites')
+      }
+
+      const response = await fetch('/api/invites/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          invite_type: 'group',
+          group_id: params.id,
+        }),
+      })
+
+      if (response.status === 403) {
+        toast({
+          title: 'You need to join this group before inviting others.',
+          variant: 'error',
+        })
+        return
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to create invite')
+      }
+
+      const data = await response.json()
+      const url = data?.inviteUrl || data?.invite?.invite_url
+      if (url) {
+        setInviteUrl(url)
+      }
+    } catch (error: any) {
+      console.error('Error creating invite:', error)
+      toast({
+        title: 'Failed to create invite',
+        description: error.message || 'Please try again',
+        variant: 'error',
+      })
+    } finally {
+      setCreatingInvite(false)
+    }
   }
 
   const handleEditFellowship = () => {
@@ -656,6 +714,10 @@ export default function FellowshipManagePage({ params }: { params: { id: string 
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
         fellowshipName={fellowshipData.name}
+        fellowshipId={params.id}
+        inviteUrl={inviteUrl}
+        onCreateInvite={handleCreateInvite}
+        creatingInvite={creatingInvite}
       />
     </div>
   )

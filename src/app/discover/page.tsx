@@ -1,285 +1,261 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { ArrowLeft, MapPin, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Logo from '@/components/Logo'
-import { 
-  ArrowLeft, 
-  Search, 
-  MapPin, 
-  BookOpen, 
-  Users, 
-  Filter,
-  UserPlus,
-  MessageCircle,
-  Heart
-} from 'lucide-react'
+import SearchModal from '@/components/discovery/SearchModal'
+import { useToast } from '@/components/ui/Toast'
+import { useUserProfile } from '@/hooks/useUserProfile'
+import { supabase } from '@/lib/supabase'
+import type { Church } from '@/types/church'
 
-export default function UserSearchPage() {
+export default function DiscoverPage() {
   const router = useRouter()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedFilter, setSelectedFilter] = useState('All')
-  const [users, setUsers] = useState([
-    {
-      id: '1',
-      name: 'Sarah Johnson',
-      bio: 'Passionate about community service and helping others grow in faith.',
-      location: 'San Francisco, CA',
-      denomination: 'Baptist',
-      interests: ['Community Service', 'Prayer', 'Bible Study'],
-      mutualConnections: 3,
-      isFollowing: false,
-      profileImage: null
-    },
-    {
-      id: '2',
-      name: 'Michael Chen',
-      bio: 'Young adult leader focused on building authentic Christian relationships.',
-      location: 'Los Angeles, CA',
-      denomination: 'Non-denominational',
-      interests: ['Worship', 'Fellowship', 'Leadership'],
-      mutualConnections: 1,
-      isFollowing: true,
-      profileImage: null
-    },
-    {
-      id: '3',
-      name: 'Emily Rodriguez',
-      bio: 'Love sharing testimonies and encouraging others in their faith journey.',
-      location: 'San Diego, CA',
-      denomination: 'Methodist',
-      interests: ['Testimonies', 'Prayer', 'Women\'s Ministry'],
-      mutualConnections: 5,
-      isFollowing: false,
-      profileImage: null
-    },
-    {
-      id: '4',
-      name: 'David Thompson',
-      bio: 'Church elder passionate about discipleship and spiritual growth.',
-      location: 'Oakland, CA',
-      denomination: 'Presbyterian',
-      interests: ['Discipleship', 'Bible Study', 'Mentoring'],
-      mutualConnections: 2,
-      isFollowing: false,
-      profileImage: null
-    }
-  ])
+  const toast = useToast()
+  const { profile } = useUserProfile()
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [initialTab, setInitialTab] = useState<'people' | 'churches'>('people')
+  const [peoplePreview, setPeoplePreview] = useState<any[]>([])
+  const [churchesPreview, setChurchesPreview] = useState<Church[]>([])
+  const [loadingPeople, setLoadingPeople] = useState(true)
+  const [loadingChurches, setLoadingChurches] = useState(true)
 
-  const [filteredUsers, setFilteredUsers] = useState(users)
-
-  const filters = ['All', 'Nearby', 'Same Denomination', 'Similar Interests']
+  const profileCity = profile?.city?.trim() || null
 
   useEffect(() => {
-    let filtered = users
+    const loadPreview = async () => {
+      try {
+        setLoadingPeople(true)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          setPeoplePreview([])
+          return
+        }
 
-    // Apply search filter
-    if (searchQuery) {
-      filtered = filtered.filter(user => 
-        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.bio.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.location.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+        const headers: HeadersInit = { 'Content-Type': 'application/json' }
+        if (session.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`
+        }
+
+        const params = new URLSearchParams()
+        if (profileCity) params.set('city', profileCity)
+        const response = await fetch(`/api/discover/people?${params.toString()}`, {
+          credentials: 'include',
+          headers,
+        })
+
+        if (!response.ok) {
+          throw new Error('Unable to load people')
+        }
+        const data = await response.json()
+        setPeoplePreview((data.people || []).slice(0, 3))
+      } catch (error: any) {
+        toast({ title: error.message || 'Failed to load people', variant: 'error' })
+        setPeoplePreview([])
+      } finally {
+        setLoadingPeople(false)
+      }
     }
 
-    // Apply category filter
-    if (selectedFilter === 'Nearby') {
-      // In real app, this would filter by location proximity
-      filtered = filtered.filter(user => user.location.includes('CA'))
-    } else if (selectedFilter === 'Same Denomination') {
-      // In real app, this would filter by user's denomination
-      filtered = filtered.filter(user => user.denomination === 'Non-denominational')
-    } else if (selectedFilter === 'Similar Interests') {
-      // In real app, this would filter by shared interests
-      filtered = filtered.filter(user => 
-        user.interests.some(interest => ['Prayer', 'Bible Study'].includes(interest))
-      )
+    const loadChurchesPreview = async () => {
+      try {
+        setLoadingChurches(true)
+        let coords: { lat: number; lng: number } | null = null
+        if (typeof window !== 'undefined') {
+          const raw = window.localStorage.getItem('gathered_discover_last_coords_v1')
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as { lat: number; lng: number }
+              if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+                coords = parsed
+              }
+            } catch {
+              coords = null
+            }
+          }
+        }
+
+        const params = new URLSearchParams()
+        params.set('radius_miles', '10')
+        if (coords) {
+          params.set('lat', coords.lat.toString())
+          params.set('lng', coords.lng.toString())
+        } else if (profileCity) {
+          params.set('city', profileCity)
+        }
+
+        const response = await fetch(`/api/discover/churches?${params.toString()}`)
+        if (!response.ok) {
+          throw new Error('Unable to load churches')
+        }
+        const data = await response.json()
+        setChurchesPreview((data.churches || []).slice(0, 3))
+      } catch (error: any) {
+        toast({ title: error.message || 'Failed to load churches', variant: 'error' })
+        setChurchesPreview([])
+      } finally {
+        setLoadingChurches(false)
+      }
     }
 
-    setFilteredUsers(filtered)
-  }, [searchQuery, selectedFilter, users])
-
-  const handleFollow = (userId: string) => {
-    setUsers(prev => prev.map(user => 
-      user.id === userId 
-        ? { ...user, isFollowing: !user.isFollowing }
-        : user
-    ))
-  }
-
-  const handleViewProfile = (userId: string) => {
-    router.push(`/profile/${userId}`)
-  }
+    void loadPreview()
+    void loadChurchesPreview()
+  }, [profileCity, toast])
 
   return (
-    <div className="min-h-screen bg-[#0F1433] pb-20">
-      {/* Header */}
-      <div className="bg-[#0F1433] shadow-sm border-b border-[#D4AF37]/30 sticky top-0 z-40">
+    <div className="min-h-screen bg-navy-900 pb-24">
+      <div className="bg-navy-800/50 border-b border-white/10 sticky top-0 z-40">
         <div className="max-w-md mx-auto px-4">
           <div className="flex items-center justify-between py-4">
             <button
               onClick={() => router.back()}
-              className="p-2 text-white/60 hover:text-white transition-colors"
+              className="p-2 text-slate-400 hover:text-slate-50 transition-colors"
+              aria-label="Go back"
             >
               <ArrowLeft className="w-6 h-6" />
             </button>
-            
+
             <div className="flex items-center space-x-3">
               <Logo size="sm" showText={false} />
-              <h1 className="text-lg font-bold text-white">Discover People</h1>
+              <h1 className="text-lg font-bold text-white">Discover</h1>
             </div>
 
-            <div className="w-10"></div> {/* Spacer for centering */}
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="p-2 text-slate-300 hover:text-white transition-colors"
+              aria-label="Search"
+            >
+              <Search className="w-6 h-6" />
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-md mx-auto px-4 py-6">
-        {/* Search Bar */}
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/60" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, location, or interests..."
-              className="w-full bg-white/10 border border-[#D4AF37]/30 rounded-xl pl-10 pr-4 py-3 text-white placeholder-white/60 focus:outline-none focus:border-[#F5C451]"
-            />
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-white">Filter by</h2>
-            <Filter className="w-5 h-5 text-[#F5C451]" />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {filters.map(filter => (
-              <button
-                key={filter}
-                onClick={() => setSelectedFilter(filter)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                  selectedFilter === filter
-                    ? 'bg-[#F5C451] text-[#0F1433]'
-                    : 'bg-white/10 text-white hover:bg-white/20'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Results */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-white">
-              {filteredUsers.length} People Found
-            </h3>
-          </div>
-
-          {filteredUsers.map(user => (
-            <div key={user.id} className="bg-white/5 border border-[#D4AF37] rounded-2xl p-4 hover:bg-white/10 transition-all duration-200 relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-r from-[#F5C451]/5 to-transparent pointer-events-none"></div>
-              
-              <div className="flex items-start space-x-4 relative z-10">
-                {/* Profile Picture */}
-                <div className="w-12 h-12 bg-[#F5C451] rounded-full flex items-center justify-center border-2 border-[#0F1433]">
-                  <span className="text-lg font-bold text-[#0F1433]">
-                    {user.name.charAt(0)}
-                  </span>
-                </div>
-
-                {/* User Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="font-semibold text-white text-lg">{user.name}</h4>
-                      <p className="text-white/80 text-sm leading-relaxed line-clamp-2">
-                        {user.bio}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Location & Denomination */}
-                  <div className="flex items-center space-x-4 text-sm text-white/70 mb-3">
-                    <div className="flex items-center space-x-1">
-                      <MapPin className="w-4 h-4 text-[#F5C451]" />
-                      <span>{user.location}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <BookOpen className="w-4 h-4 text-[#F5C451]" />
-                      <span>{user.denomination}</span>
-                    </div>
-                  </div>
-
-                  {/* Interests */}
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {user.interests.slice(0, 3).map((interest, index) => (
-                      <span
-                        key={index}
-                        className="px-2 py-1 bg-white/10 text-white/80 text-xs rounded-full border border-[#D4AF37]/30"
-                      >
-                        {interest}
-                      </span>
-                    ))}
-                    {user.interests.length > 3 && (
-                      <span className="px-2 py-1 bg-white/10 text-white/80 text-xs rounded-full border border-[#D4AF37]/30">
-                        +{user.interests.length - 3} more
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Mutual Connections */}
-                  {user.mutualConnections > 0 && (
-                    <div className="flex items-center space-x-1 text-sm text-white/60 mb-3">
-                      <Users className="w-4 h-4" />
-                      <span>{user.mutualConnections} mutual connection{user.mutualConnections !== 1 ? 's' : ''}</span>
-                    </div>
-                  )}
-
-                  {/* Action Buttons */}
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleViewProfile(user.id)}
-                      className="flex-1 bg-white/10 text-white py-2 px-3 rounded-lg font-semibold hover:bg-white/20 transition-colors border border-[#D4AF37]/50 text-sm"
-                    >
-                      View Profile
-                    </button>
-                    <button
-                      onClick={() => handleFollow(user.id)}
-                      className={`px-4 py-2 rounded-lg font-semibold transition-colors text-sm ${
-                        user.isFollowing
-                          ? 'bg-white/10 text-white border border-[#D4AF37]/50 hover:bg-white/20'
-                          : 'bg-[#F5C451] text-[#0F1433] hover:bg-[#D4AF37]'
-                      }`}
-                    >
-                      {user.isFollowing ? 'Following' : 'Follow'}
-                    </button>
-                    <button className="bg-white/10 text-white p-2 rounded-lg hover:bg-white/20 transition-colors border border-[#D4AF37]/50">
-                      <MessageCircle className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+      <div className="max-w-md mx-auto px-4 py-10 space-y-8">
+        <section className="bg-navy-800/40 border border-white/10 rounded-2xl p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-white">Happening around you</p>
+              <p className="text-xs text-slate-400">Christians around you on Gathered right now</p>
+              <div className="flex flex-wrap gap-3 text-[11px] text-slate-300">
+                <span className="rounded-full border border-white/10 bg-white/5/50 px-3 py-1">
+                  {peoplePreview.length} people near you
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5/50 px-3 py-1">
+                  {churchesPreview.length} churches nearby
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5/50 px-3 py-1">
+                  Near {profileCity || 'your area'}
+                </span>
               </div>
             </div>
-          ))}
-        </div>
-
-        {filteredUsers.length === 0 && (
-          <div className="text-center py-12">
-            <Users className="w-16 h-16 text-white/40 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">
-              No people found
-            </h3>
-            <p className="text-white/80">
-              Try adjusting your search or filters
-            </p>
+            <button
+              onClick={() => {
+                setInitialTab('people')
+                setSearchOpen(true)
+              }}
+              className="flex items-center gap-2 rounded-full bg-gold-500 px-4 py-2 text-xs font-semibold text-navy-900 hover:bg-gold-400 transition-colors"
+            >
+              <Search className="w-4 h-4" />
+              Search
+            </button>
           </div>
-        )}
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-white">People near you</h2>
+            <button
+              onClick={() => {
+                setInitialTab('people')
+                setSearchOpen(true)
+              }}
+              className="text-xs text-gold-400 hover:text-gold-300"
+            >
+              See all →
+            </button>
+          </div>
+          {loadingPeople ? (
+            <div className="h-20 bg-navy-800/40 border border-white/10 rounded-2xl animate-pulse" />
+          ) : peoplePreview.length === 0 ? (
+            <div className="rounded-xl bg-navy-800/30 px-5 py-7 text-sm text-slate-400">
+              No believers showing nearby yet. Try searching to connect.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {peoplePreview.map((person) => (
+                <div
+                  key={person.id}
+                  className="bg-navy-900/40 border border-white/10 rounded-2xl p-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gold-500/20 border border-gold-500/30 flex items-center justify-center text-sm font-bold text-gold-100">
+                      {person.avatar_url ? (
+                        <img src={person.avatar_url} alt={person.name} className="w-full h-full object-cover rounded-full" />
+                      ) : (
+                        person.name?.slice(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-white">{person.name}</p>
+                      <p className="text-xs text-slate-400">{person.city || 'Nearby'}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-white">Churches near you</h2>
+            <button
+              onClick={() => {
+                setInitialTab('churches')
+                setSearchOpen(true)
+              }}
+              className="text-xs text-gold-400 hover:text-gold-300"
+            >
+              See all →
+            </button>
+          </div>
+          {loadingChurches ? (
+            <div className="h-20 bg-navy-800/40 border border-white/10 rounded-2xl animate-pulse" />
+          ) : churchesPreview.length === 0 ? (
+            <div className="rounded-xl bg-navy-800/30 px-5 py-7 text-sm text-slate-400">
+              No churches to show yet. Try searching by name or location.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {churchesPreview.map((church) => (
+                <div
+                  key={church.id}
+                  className="bg-navy-800/40 border border-white/10 rounded-2xl p-4 hover:border-gold-500/30 transition-colors"
+                >
+                  <p className="text-sm font-semibold text-white">{church.name}</p>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                    <MapPin className="w-3.5 h-3.5 text-gold-400" />
+                    <span>
+                      {church.distance_miles
+                        ? `${church.city || 'Nearby'} · ${church.distance_miles.toFixed(1)} mi`
+                        : church.address || church.city || 'Nearby'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
+
+      <SearchModal
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        initialTab={initialTab}
+      />
     </div>
   )
 }
+

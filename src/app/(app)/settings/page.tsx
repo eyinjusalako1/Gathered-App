@@ -268,13 +268,16 @@ export default function SettingsPage() {
               Privacy & Security
             </h3>
             <div className="space-y-2">
-              <button className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <Link
+                href="/settings/privacy"
+                className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
                 <div className="flex items-center space-x-3">
                   <Shield className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                   <span className="text-gray-900 dark:text-white">Privacy Settings</span>
                 </div>
                 <span className="text-sm text-gray-500 dark:text-gray-400">→</span>
-              </button>
+              </Link>
             </div>
           </div>
 

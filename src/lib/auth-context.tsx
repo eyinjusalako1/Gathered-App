@@ -68,11 +68,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    return { error }
+    // Check if Supabase is configured
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    
+    if (!supabaseUrl || !supabaseAnonKey || 
+        supabaseUrl === 'undefined' || supabaseAnonKey === 'undefined' ||
+        supabaseUrl === 'https://placeholder.supabase.co') {
+      return { 
+        error: { 
+          message: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment variables.' 
+        } 
+      }
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      return { error }
+    } catch (err: any) {
+      // Handle network errors
+      if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+        return {
+          error: {
+            message: 'Unable to connect to authentication service. Please check your internet connection and ensure Supabase is properly configured.'
+          }
+        }
+      }
+      return { error: err }
+    }
   }
 
   const signOut = async () => {

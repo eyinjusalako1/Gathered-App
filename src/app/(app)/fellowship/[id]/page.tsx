@@ -7,6 +7,7 @@ import { useUserProfile } from '@/hooks/useUserProfile'
 import { useToast } from '@/components/ui/Toast'
 import { FellowshipService } from '@/lib/fellowship-service'
 import { EventService } from '@/lib/event-service'
+import { supabase } from '@/lib/supabase'
 import { FellowshipGroup, GroupMembership, Event } from '@/types'
 import { getGradientFromName } from '@/utils/gradient'
 import { ActivityPlannerRequest, ActivityPlannerAPIResponse, ActivityPlannerResponse } from '@/types/activity-planner'
@@ -27,8 +28,10 @@ import {
   LogOut,
   ArrowRight,
   Clock,
-  Plus
+  Plus,
+  Share2
 } from 'lucide-react'
+import MemberInviteModal from '@/components/MemberInviteModal'
 
 export default function FellowshipDetailPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
   const { user } = useAuth()
@@ -45,6 +48,9 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
   const [joining, setJoining] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteUrl, setInviteUrl] = useState<string>('')
+  const [creatingInvite, setCreatingInvite] = useState(false)
   const [groupId, setGroupId] = useState<string>('')
   const [suggestions, setSuggestions] = useState<SuggestionWithCategory[]>([])
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
@@ -118,11 +124,15 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
       }
     } catch (error: any) {
       console.error('Error loading group:', error)
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to load group',
-        variant: 'error',
-      })
+      // Don't show toast if it's likely an RLS/permission issue (user might have just joined)
+      // Only show error if it's a real problem
+      if (error.code !== 'PGRST301' && error.message?.includes('JWT')) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to load group. Please try refreshing the page.',
+          variant: 'error',
+        })
+      }
     } finally {
       setLoading(false)
     }
@@ -313,6 +323,61 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
       time_hint: suggestion.suggested_time_hint
     })
     router.push(`/events/create?${params.toString()}`)
+  }
+
+  const handleCreateInvite = async () => {
+    if (!user || !group || !isMember) return
+
+    setCreatingInvite(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('Please log in to create invites')
+      }
+
+      const response = await fetch('/api/invites/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          invite_type: 'group',
+          group_id: groupId,
+        }),
+      })
+
+      if (response.status === 403) {
+        toast({
+          title: 'You need to join this group before inviting others.',
+          variant: 'error',
+        })
+        return
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to create invite')
+      }
+
+      const data = await response.json()
+      const url = data?.inviteUrl || data?.invite?.invite_url
+      if (!url) {
+        throw new Error('Invite link was not returned. Please try again.')
+      }
+      setInviteUrl(url)
+      setShowInviteModal(true)
+    } catch (error: any) {
+      console.error('Error creating invite:', error)
+      toast({
+        title: 'Failed to create invite',
+        description: error.message || 'Please try again',
+        variant: 'error',
+      })
+    } finally {
+      setCreatingInvite(false)
+    }
   }
 
   const handleJoin = async () => {
@@ -506,8 +571,9 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
 
             {isAdmin && (
               <button
-                onClick={() => router.push(`/fellowships/${group.id}/manage`)}
+                onClick={() => router.push(`/fellowship/${group.id}/manage`)}
                 className="p-2 text-slate-300 hover:text-gold-500 transition-colors"
+                title="Manage Fellowship"
               >
                 <Settings className="w-5 h-5" />
               </button>
@@ -547,6 +613,23 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
                 <span>Leave Group</span>
               </button>
               <button
+                onClick={handleCreateInvite}
+                disabled={creatingInvite}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-gold-600/40 text-gold-500 px-6 py-3 text-sm font-medium hover:bg-gold-500/10 transition-colors disabled:opacity-50"
+              >
+                {creatingInvite ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gold-500"></div>
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-5 h-5" />
+                    <span>Invite to Group</span>
+                  </>
+                )}
+              </button>
+              <button
                 onClick={() => router.push(`/chat/${groupId}`)}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-gold-600/40 text-gold-500 px-6 py-3 text-sm font-medium hover:bg-gold-500/10 transition-colors"
               >
@@ -556,6 +639,17 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
             </>
           )}
         </div>
+
+        {/* Invite Modal */}
+        <MemberInviteModal
+          isOpen={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          fellowshipName={group?.name || 'this group'}
+          fellowshipId={groupId}
+          inviteUrl={inviteUrl}
+          onCreateInvite={handleCreateInvite}
+          creatingInvite={creatingInvite}
+        />
 
         {/* Leave Confirmation Modal */}
         {showLeaveConfirm && (

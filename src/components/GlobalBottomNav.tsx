@@ -14,6 +14,7 @@ export default function GlobalBottomNav() {
     if (pathname.startsWith('/events')) return 'events'
     if (pathname.startsWith('/chat')) return 'chat'
     if (pathname.startsWith('/fellowships')) return 'fellowships'
+    if (pathname.startsWith('/more')) return 'more'
     return 'home'
   }
 
@@ -30,6 +31,9 @@ export default function GlobalBottomNav() {
         break
       case 'fellowships':
         router.push('/fellowships')
+        break
+      case 'more':
+        router.push('/more')
         break
       default:
         router.push('/dashboard')

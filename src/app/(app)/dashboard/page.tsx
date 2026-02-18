@@ -3,41 +3,52 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { useUserProfile } from "@/hooks/useUserProfile";
-import { EventService } from "@/lib/event-service";
 import { FellowshipService } from "@/lib/fellowship-service";
-import { Event, FellowshipGroup } from "@/types";
-import { Calendar, MapPin, Clock, Users, MessageCircle, Users as UsersIcon } from "lucide-react";
+import { FellowshipGroup } from "@/types";
+import { supabase } from "@/lib/supabase";
+import FounderMessageModal, {
+  FOUNDER_MESSAGE_STORAGE_KEY,
+} from "@/components/FounderMessageModal";
+import {
+  MapPin,
+  Users,
+  MessageCircle,
+  Sparkles,
+  BookOpen,
+  Heart,
+  Search,
+} from "lucide-react";
 
 interface UserProfile {
   id: string;
-  display_name: string | null;
-  short_bio: string | null;
-  long_bio: string | null;
-  tags: string[] | null;
-  social_style: string | null;
-  preferred_group_size: string | null;
-  availability_summary: string | null;
+  name: string | null;
+  bio: string | null;
+  interests: string[] | null;
+  availability: string[] | null;
   city?: string | null;
   avatar_url?: string | null;
   profile_complete?: boolean;
 }
 
+interface DiscoveredPerson {
+  id: string;
+  name: string | null;
+  city: string | null;
+  interests: string[] | null;
+  avatar_url?: string | null;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { isSteward } = useUserProfile();
-
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hostedEvents, setHostedEvents] = useState<Event[]>([]);
-  const [joinedEvents, setJoinedEvents] = useState<Event[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
-  const [recommendedEvents, setRecommendedEvents] = useState<Event[]>([]);
-  const [recommendedLoading, setRecommendedLoading] = useState(true);
   const [userGroups, setUserGroups] = useState<FellowshipGroup[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
+  const [people, setPeople] = useState<DiscoveredPerson[]>([]);
+  const [peopleLoading, setPeopleLoading] = useState(true);
+  const [showFounderMessage, setShowFounderMessage] = useState(false);
 
   useEffect(() => {
     if (!user?.id) {
@@ -76,32 +87,6 @@ export default function DashboardPage() {
     fetchProfile();
   }, [user?.id]);
 
-  // Load user's events (hosted and joined)
-  useEffect(() => {
-    if (!user?.id) {
-      setEventsLoading(false);
-      return;
-    }
-
-    const loadUserEvents = async () => {
-      setEventsLoading(true);
-      try {
-        const [hosted, joined] = await Promise.all([
-          EventService.getUserHostedEvents(user.id),
-          EventService.getUserRSVPedEvents(user.id),
-        ]);
-        setHostedEvents(hosted);
-        setJoinedEvents(joined);
-      } catch (err: any) {
-        console.error("Error loading user events:", err);
-      } finally {
-        setEventsLoading(false);
-      }
-    };
-
-    loadUserEvents();
-  }, [user?.id]);
-
   // Load user's groups
   useEffect(() => {
     if (!user?.id) {
@@ -126,49 +111,64 @@ export default function DashboardPage() {
     loadUserGroups();
   }, [user?.id]);
 
-
-  const formatEventDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return {
-      date: date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      }),
-      time: date.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }),
-    };
-  };
-
-  // Load recommended upcoming events (simple v1)
   useEffect(() => {
-    const loadRecommendedEvents = async () => {
-      setRecommendedLoading(true);
+    const loadPeople = async () => {
+      if (!user) {
+        setPeople([]);
+        setPeopleLoading(false);
+        return;
+      }
+
+      setPeopleLoading(true);
       try {
-        const events = await EventService.getUpcomingEvents(undefined, 5);
-        setRecommendedEvents(events);
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        const headers: HeadersInit = {
+          "Content-Type": "application/json",
+        };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        const response = await fetch("/api/discover/people", {
+          credentials: "include",
+          headers,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "Failed to load people");
+        }
+
+        const data = await response.json();
+        setPeople(data.people || []);
       } catch (err) {
-        console.error("Error loading recommended events:", err);
+        console.error("Error loading people:", err);
+        setPeople([]);
       } finally {
-        setRecommendedLoading(false);
+        setPeopleLoading(false);
       }
     };
 
-    loadRecommendedEvents();
-  }, []);
+    loadPeople();
+  }, [user]);
 
-  const handleGoToDiscover = () => {
-    router.push("/discovery");
-  };
+  useEffect(() => {
+    if (loading || !user) return;
+    if (typeof window === "undefined") return;
+    try {
+      const seen = window.localStorage.getItem(FOUNDER_MESSAGE_STORAGE_KEY) === "true";
+      if (!seen) {
+        setShowFounderMessage(true);
+      }
+    } catch {
+      // Ignore storage access issues
+    }
+  }, [loading, user]);
 
-  const handleGoToHost = () => {
-    router.push("/events/create");
-  };
 
-  const handleEditProfile = () => {
-    router.push("/profile");
+  const handleGoToDiscoverPeople = () => {
+    router.push("/discover");
   };
 
   const handleBrowseGroups = () => {
@@ -180,38 +180,162 @@ export default function DashboardPage() {
   };
 
   const getFirstName = () => {
-    const displayName = profile?.display_name || user?.user_metadata?.name || "";
+    const displayName = profile?.name || user?.user_metadata?.name || "";
     if (!displayName) return "";
     return String(displayName).split(" ")[0];
   };
 
-  const getAvatarInitial = () => {
-    const source =
-      profile?.display_name ||
-      user?.user_metadata?.name ||
-      (user?.email as string | undefined) ||
-      "";
-    if (!source) return "U";
-    return String(source).charAt(0).toUpperCase();
-  };
-
   const firstName = getFirstName();
 
-  const hasProfileSignals =
-    !!(
-      profile &&
-      (profile.social_style ||
-        profile.preferred_group_size ||
-        profile.availability_summary ||
-        (profile.tags && profile.tags.length > 0))
-    );
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  };
 
-  const showCompleteVibe = !hasProfileSignals;
+  const getProfileCompletion = () => {
+    if (!profile) return 0;
+    const checks = [
+      !!profile.name,
+      !!profile.bio,
+      !!profile.city,
+      (profile.interests?.length || 0) > 0,
+      (profile.availability?.length || 0) > 0,
+      !!profile.avatar_url,
+    ];
+    const completed = checks.filter(Boolean).length;
+    return Math.round((completed / checks.length) * 100);
+  };
+
+  const profileCompletion = getProfileCompletion();
+  const showGoldRing = profileCompletion >= 80;
+  const devotionStreak = 0;
+
+  const formatRelativeTime = (dateString?: string | null) => {
+    if (!dateString) return "Recently";
+    const diff = Date.now() - new Date(dateString).getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
+
+  const sharedInterests = (personInterests: string[] | null) => {
+    if (!profile?.interests || !personInterests) return [];
+    const set = new Set(profile.interests.map((i: string) => i.toLowerCase()));
+    return personInterests.filter((interest) =>
+      set.has(interest.toLowerCase())
+    );
+  };
+
+  const todaySignal = (() => {
+    const signals: Array<{
+      message: string;
+      cta: string;
+      onClick: () => void;
+    }> = [];
+
+    if (people.length > 0) {
+      const count = people.length;
+      signals.push({
+        message: `✨ ${count} ${count === 1 ? "person" : "people"} near you joined Gathered today`,
+        cta: "Discover people",
+        onClick: handleGoToDiscoverPeople,
+      });
+    }
+
+    if (userGroups.length > 0) {
+      const count = userGroups.length;
+      signals.push({
+        message: `🙏 Today’s devotion is being discussed in ${count} ${count === 1 ? "group" : "groups"}`,
+        cta: "View group",
+        onClick: () => router.push(`/fellowship/${userGroups[0].id}`),
+      });
+    }
+
+    if (profile?.city) {
+      signals.push({
+        message: `👥 Explore groups near ${profile.city}`,
+        cta: "Explore groups",
+        onClick: handleBrowseGroups,
+      });
+    }
+
+    signals.push({
+      message: "🙏 Open today’s devotion",
+      cta: "Open devotion",
+      onClick: () => router.push("/devotions"),
+    });
+
+    const index = new Date().getDate() % signals.length;
+    return signals[index];
+  })();
+
+  type SuggestedPerson = {
+    id: string;
+    name: string;
+    city: string;
+    interests: string[];
+    reason: string;
+    avatarUrl?: string | null;
+  };
+
+  const suggestedPeople: SuggestedPerson[] = people
+    .slice(0, 3)
+    .map((person: DiscoveredPerson) => {
+    const personName = person.name || "New friend";
+    const personCity = person.city || "Near you";
+    const personInterests = person.interests || [];
+    const overlap = sharedInterests(personInterests).slice(0, 2);
+    const interests = overlap.length > 0 ? overlap : personInterests.slice(0, 2);
+    const reason =
+      overlap.length >= 2
+        ? `You both value ${overlap[0]} and ${overlap[1]}`
+        : overlap.length === 1
+        ? `You both value ${overlap[0]}`
+        : person.city
+        ? `You both live near ${personCity}`
+        : "Suggested based on your profile";
+
+    return {
+      id: person.id,
+      name: personName,
+      city: personCity,
+      interests,
+      reason,
+      avatarUrl: person.avatar_url || null,
+    };
+    });
+
+  type ConversationItem = {
+    id: string;
+    name: string;
+    preview: string;
+    time: string;
+    unread: boolean;
+  };
+
+  // TODO: Replace with real chat data when available.
+  const conversations: ConversationItem[] = userGroups
+    .slice(0, 3)
+    .map((group: FellowshipGroup, index: number) => ({
+    id: group.id,
+    name: group.name,
+      preview: "Group member · Open to see the latest messages",
+      time: formatRelativeTime(group.updated_at || group.created_at),
+    unread: index === 0,
+    }));
 
   return (
     <main className="min-h-screen bg-navy-900 text-slate-50 flex justify-center py-8 px-4">
       <div className="w-full max-w-5xl space-y-6">
-        {/* Hero welcome section */}
+        {/* Today on Gathered */}
         <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-navy-900 via-navy-800 to-purple-900 border border-gold-600/20 hover:border-gold-500/40 shadow-[0_0_30px_rgba(212,175,55,0.15)] transition-colors px-5 py-6 md:px-8 md:py-7">
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute -top-24 -right-10 w-52 h-52 bg-gold-500/15 blur-3xl rounded-full" />
@@ -219,95 +343,74 @@ export default function DashboardPage() {
           </div>
 
           <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.2em] text-gold-500">
-                Welcome to Gathered
-              </p>
-              <h1 className="text-2xl md:text-3xl font-semibold">
-                {firstName ? `Hey, ${firstName} 👋` : "Hey, welcome 👋"}
-              </h1>
-              <p className="text-sm md:text-base text-slate-100/80 max-w-xl">
-                Your community is growing. Connect with groups, chat with friends, and plan your next hangout.
-              </p>
+            <div className="flex items-center gap-4">
+              <div
+                className={`relative w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center bg-navy-900/60 border border-white/10 ${
+                  showGoldRing ? "ring-2 ring-gold-500/70 ring-offset-2 ring-offset-navy-900" : ""
+                }`}
+              >
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt={profile.name || "Profile"}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="text-lg font-semibold text-gold-500">
+                    {getInitials(profile?.name || firstName || "U")}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.2em] text-gold-500">
+                  Today on Gathered
+                </p>
+                <h1 className="text-2xl md:text-3xl font-semibold">
+                  {firstName ? `Hey, ${firstName} 👋` : "Welcome back 👋"}
+                </h1>
+                <p className="text-sm md:text-base text-slate-100/80">
+                  Ready to show up today?
+                </p>
+                <p className="text-xs md:text-sm text-slate-300">
+                  Your space to grow, connect, and walk with others.
+                </p>
+                <div className="pt-3">
+                  <button
+                    type="button"
+                    onClick={handleGoToDiscoverPeople}
+                    className="inline-flex items-center gap-2 rounded-full bg-gold-500 px-4 py-2 text-xs font-semibold text-navy-900 hover:bg-gold-600 transition-colors"
+                  >
+                    <Search className="w-4 h-4" />
+                    Discover people & churches
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="mt-2 md:mt-0 flex-shrink-0">
-              <div className="rounded-2xl bg-navy-900/40 border border-gold-600/20 px-4 py-3 backdrop-blur-md min-w-[190px]">
-                <p className="text-[11px] uppercase tracking-wide text-gold-500 mb-1">
-                  Community activity
-                </p>
-                {groupsLoading || recommendedLoading ? (
-                  <p className="text-xs text-slate-200/80">Loading…</p>
-                ) : (() => {
-                  const groupsJoined = userGroups.length;
-                  const upcomingHangouts = recommendedEvents.length;
-                  
-                  // Calculate events near user location
-                  let nearYouCount = 0;
-                  if (profile?.city && recommendedEvents.length > 0) {
-                    const cityLower = profile.city.toLowerCase();
-                    nearYouCount = recommendedEvents.filter(event => 
-                      event.location && event.location.toLowerCase().includes(cityLower)
-                    ).length;
-                  }
-                  
-                  // Determine which chips to show
-                  const chips: Array<{ label: string; value: string }> = [];
-                  
-                  if (groupsJoined > 0) {
-                    chips.push({
-                      label: groupsJoined === 1 ? "Group joined" : "Groups joined",
-                      value: String(groupsJoined)
-                    });
-                  }
-                  
-                  if (upcomingHangouts > 0) {
-                    chips.push({
-                      label: upcomingHangouts === 1 ? "Upcoming hangout" : "Upcoming hangouts",
-                      value: String(upcomingHangouts)
-                    });
-                  }
-                  
-                  if (nearYouCount > 0 && profile?.city) {
-                    chips.push({
-                      label: `${nearYouCount === 1 ? "hangout" : "hangouts"} near ${profile.city}`,
-                      value: String(nearYouCount)
-                    });
-                  }
-                  
-                  // Fallback if no stats
-                  if (chips.length === 0) {
-                    return (
-                      <div className="text-center">
-                        <p className="text-xs text-slate-200/80 font-medium">
-                          Start by joining a group
-                        </p>
-                      </div>
-                    );
-                  }
-                  
-                  // Render chips
-                  return (
-                    <div className="space-y-1.5 text-xs text-slate-50">
-                      {chips.map((chip, index) => (
-                        <div key={index}>
-                          {chip.value && (
-                            <>
-                              <p className="font-semibold">{chip.value}</p>
-                              <p className="text-[11px] text-slate-200/80">{chip.label}</p>
-                            </>
-                          )}
-                          {!chip.value && (
-                            <p className="text-[11px] text-slate-200/80">{chip.label}</p>
-                          )}
-                          {index < chips.length - 1 && (
-                            <div className="h-3 w-px bg-gold-600/35 my-1.5" />
-                          )}
-                        </div>
-                      ))}
+              <div className="rounded-2xl bg-navy-900/40 border border-gold-600/20 px-4 py-4 backdrop-blur-md min-w-[220px]">
+                {groupsLoading ? (
+                  <p className="text-xs text-slate-200/80">Loading today&apos;s update…</p>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-gold-500">
+                      <Sparkles className="w-4 h-4" />
+                      <span className="text-[11px] uppercase tracking-wide">
+                        Today on Gathered
+                      </span>
                     </div>
-                  );
-                })()}
+                    <p className="text-sm font-semibold text-slate-50">
+                      {todaySignal.message}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={todaySignal.onClick}
+                      className="mt-2 inline-flex items-center rounded-full bg-gold-500 text-navy-900 px-3 py-1.5 text-[11px] font-semibold hover:bg-gold-600 transition-colors"
+                    >
+                      {todaySignal.cta}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -321,598 +424,269 @@ export default function DashboardPage() {
           <p className="text-sm text-red-400">{error}</p>
         )}
 
-        {/* Profile snapshot + quick actions */}
-        {!loading && profile && (
-          <section className="grid gap-5 md:grid-cols-[minmax(0,7fr)_minmax(0,6fr)]">
-            {/* Profile snapshot card */}
-            <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-5 shadow-lg hover:border-gold-500/30 hover:shadow-[0_0_25px_rgba(245,196,81,0.35)] transition-colors">
-              <div className="flex items-start gap-4">
-                <div className="relative">
-                  <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-gold-500 to-gold-600 flex items-center justify-center text-navy-900 font-semibold text-xl border-4 border-navy-900 shadow-lg">
-                    {getAvatarInitial()}
-                  </div>
-                </div>
-
-                <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
-                    <div>
-                      <h2 className="text-base md:text-lg font-semibold truncate">
-                        {profile.display_name || firstName || "Your profile"}
-                      </h2>
-                      {profile.city && (
-                        <p className="text-xs text-slate-400 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          <span>{profile.city}</span>
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleEditProfile}
-                      className="inline-flex items-center justify-center rounded-full border border-gold-600/40 px-3 py-1.5 text-[11px] font-medium text-gold-500 hover:bg-gold-500/10 transition-colors mt-1 md:mt-0"
-                    >
-                      Edit profile
-                    </button>
-                  </div>
-
-                  {profile.short_bio && (
-                    <p className="text-xs text-slate-200 mt-1 line-clamp-2">
-                      {profile.short_bio}
-                    </p>
-                  )}
-                  {profile.long_bio && !profile.short_bio && (
-                    <p className="text-xs text-slate-200 mt-1 line-clamp-2">
-                      {profile.long_bio}
-                    </p>
-                  )}
-
-                  <p className="mt-2 text-[11px] text-slate-400">
-                    The better your profile, the easier it is to find your people.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 text-[11px] text-slate-300 md:grid-cols-3">
-                <div className="rounded-xl bg-navy-900/60 border border-white/10 px-3 py-2">
-                  <p className="text-slate-400">Social style</p>
-                  <p className="font-medium text-slate-100 mt-0.5">
-                    {profile.social_style || "Not set"}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-navy-900/60 border border-white/10 px-3 py-2">
-                  <p className="text-slate-400">Group size</p>
-                  <p className="font-medium text-slate-100 mt-0.5">
-                    {profile.preferred_group_size || "Not set"}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-navy-900/60 border border-white/10 px-3 py-2">
-                  <p className="text-slate-400">Availability</p>
-                  <p className="font-medium text-slate-100 mt-0.5 truncate">
-                    {profile.availability_summary || "Not set"}
-                  </p>
-                </div>
-              </div>
-
-              {profile.tags && profile.tags.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-[11px] text-slate-400 mb-1">Interests</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {profile.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-2.5 py-1 rounded-full bg-gold-500/10 text-[11px] text-gold-500 border border-gold-500/40"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Quick actions card */}
-            <div className="space-y-4">
-              <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-5 shadow-lg hover:border-gold-500/30 hover:shadow-[0_0_25px_rgba(245,196,81,0.35)] transition-colors">
-                <h2 className="text-sm font-semibold mb-1">
-                  Start with one of these
-                </h2>
-                <p className="text-xs text-slate-400 mb-4">
-                  Think of these as your first missions. We&apos;ll keep it light.
+        {/* Your conversations */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base md:text-lg font-semibold">Your conversations</h2>
+            <button
+              type="button"
+              onClick={handleGoToChats}
+              className="text-xs text-gold-500 hover:text-gold-600"
+            >
+              Go to chats →
+            </button>
+          </div>
+          <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-4">
+            {groupsLoading ? (
+              <p className="text-xs text-slate-400">Loading conversations…</p>
+            ) : conversations.length === 0 ? (
+              <div className="text-center py-4">
+                <p className="text-sm font-semibold text-slate-100">
+                  Start a conversation.
                 </p>
-
-                <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={handleGoToDiscover}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl bg-gold-500 text-navy-900 hover:bg-gold-600 transition-colors shadow-sm font-semibold"
-                  >
-                    <p className="text-sm mb-0.5">
-                      🔍 Find your people
-                    </p>
-                    <p className="text-xs text-navy-900/80">
-                      Use Discovery Assistant to find events and people that match your vibe.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleBrowseGroups}
-                    className="w-full text-left px-4 py-3.5 rounded-2xl border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 transition-colors"
-                  >
-                    <p className="text-sm font-semibold mb-0.5">
-                      👥 Browse groups
-                    </p>
-                    <p className="text-xs text-slate-300">
-                      Discover and join fellowship groups in your area.
-                    </p>
-                  </button>
-
-                  {isSteward && (
-                    <button
-                      type="button"
-                      onClick={handleGoToHost}
-                      className="w-full text-left px-4 py-3.5 rounded-2xl border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 transition-colors"
-                    >
-                      <p className="text-sm font-semibold mb-0.5">
-                        📅 Host your first hangout
-                      </p>
-                      <p className="text-xs text-slate-300">
-                        Use Activity Planner to turn an idea into a real event.
-                      </p>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-4 text-[11px] text-slate-300 hover:border-gold-500/30 hover:shadow-[0_0_20px_rgba(245,196,81,0.25)] transition-colors">
-                {showCompleteVibe ? (
-                  <>
-                    <p className="font-semibold text-slate-100 mb-1">
-                      Complete your vibe
-                    </p>
-                    <p className="mb-2 text-slate-400">
-                      Finish these details to get better recommendations.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleEditProfile}
-                      className="mt-2 inline-flex items-center rounded-full border border-gold-600/40 px-3 py-1.5 text-[11px] font-medium text-gold-500 hover:bg-gold-500/10 transition-colors"
-                    >
-                      Finish profile
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-semibold text-slate-100 mb-1">
-                      Recommended for you
-                    </p>
-                    <p className="mb-2 text-slate-400">
-                      A few things that might fit your rhythm.
-                    </p>
-                    {recommendedLoading ? (
-                      <p className="text-slate-400">Loading suggestions…</p>
-                    ) : recommendedEvents.length === 0 ? (
-                      <p className="text-slate-400">
-                        As events appear, we&apos;ll surface the best ones for you
-                        here.
-                      </p>
-                    ) : (
-                      <ul className="space-y-1.5">
-                        {recommendedEvents.slice(0, 2).map((event) => {
-                          const { date, time } = formatEventDate(
-                            event.start_time
-                          );
-                          return (
-                            <li key={event.id}>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  router.push(`/events/${event.id}`)
-                                }
-                                className="w-full text-left rounded-xl bg-navy-900/60 border border-white/10 px-3 py-2 hover:border-gold-500/40 hover:bg-navy-900/80 transition-colors"
-                              >
-                                <p className="text-[11px] font-semibold text-slate-50 line-clamp-1">
-                                  {event.title}
-                                </p>
-                                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-300">
-                                  <span className="inline-flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />
-                                    <span>{date}</span>
-                                  </span>
-                                  <span className="inline-flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    <span>{time}</span>
-                                  </span>
-                                </div>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Your Groups section */}
-        {!loading && user && (
-          <section className="mt-8 space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base md:text-lg font-semibold">Your groups</h2>
-              <button
-                type="button"
-                onClick={handleBrowseGroups}
-                className="text-xs text-gold-500 hover:text-gold-600"
-              >
-                Browse all →
-              </button>
-            </div>
-
-            <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-6 md:p-7 hover:border-gold-500/30 hover:shadow-[0_0_15px_rgba(245,196,81,0.2)] transition-colors">
-              {groupsLoading ? (
-                <p className="text-xs text-slate-400">Loading your groups…</p>
-              ) : userGroups.length === 0 ? (
-                <div className="text-center py-6">
-                  <UsersIcon className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                  <p className="text-sm text-slate-300 mb-2">
-                    You haven&apos;t joined a group yet — join one to start meeting people.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleBrowseGroups}
-                    className="mt-4 inline-flex items-center rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-sm font-semibold hover:bg-gold-600 transition-colors"
-                  >
-                    Explore groups
-                  </button>
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {userGroups.slice(0, 4).map((group) => (
-                    <button
-                      key={group.id}
-                      type="button"
-                      onClick={() => router.push(`/fellowship/${group.id}`)}
-                      className="w-full text-left p-4 bg-navy-900/60 border border-white/10 rounded-xl hover:border-gold-500/40 hover:shadow-[0_0_10px_rgba(245,196,81,0.15)] transition-all"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="text-sm font-semibold text-slate-200 truncate flex-1">
-                          {group.name}
-                        </h3>
-                      </div>
-                      {group.description && (
-                        <p className="text-xs text-slate-400 line-clamp-2 mb-3">
-                          {group.description}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-3 text-xs text-slate-400">
-                        {group.location && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            <span className="truncate">{group.location}</span>
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1">
-                          <Users className="w-3 h-3" />
-                          <span>{group.member_count || 0} members</span>
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Recent Chats section */}
-        {!loading && user && (
-          <section className="mt-8 space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base md:text-lg font-semibold">Recent chats</h2>
-              {userGroups.length > 0 && (
+                <p className="text-xs text-slate-400 mt-1">
+                  Share a prayer or check in with your group.
+                </p>
                 <button
                   type="button"
-                  onClick={handleGoToChats}
-                  className="text-xs text-gold-500 hover:text-gold-600"
+                  onClick={handleBrowseGroups}
+                  className="mt-3 inline-flex items-center rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-xs font-semibold hover:bg-gold-600 transition-colors"
                 >
-                  Go to chats →
+                  Browse groups
                 </button>
-              )}
-            </div>
-
-            <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-6 md:p-7 hover:border-gold-500/30 hover:shadow-[0_0_15px_rgba(245,196,81,0.2)] transition-colors">
-              {userGroups.length === 0 ? (
-                <div className="text-center py-6">
-                  <MessageCircle className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                  <h3 className="text-sm font-semibold text-slate-200 mb-2">
-                    Chats unlock when you join a group
-                  </h3>
-                  <p className="text-xs text-slate-400 mb-4 max-w-sm mx-auto">
-                    Join a fellowship group to start meeting people and chatting.
-                  </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {conversations.map((chat) => (
                   <button
+                    key={chat.id}
                     type="button"
-                    onClick={handleBrowseGroups}
-                    className="inline-flex items-center rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-sm font-semibold hover:bg-gold-600 transition-colors"
+                    onClick={() => router.push(`/chat/${chat.id}`)}
+                    className="w-full text-left rounded-xl bg-navy-900/60 border border-white/10 px-4 py-3 hover:border-gold-500/30 transition-colors"
                   >
-                    Explore groups
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gold-500/10 border border-gold-500/30 flex items-center justify-center text-gold-500 font-semibold">
+                        {getInitials(chat.name)}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold text-slate-100">{chat.name}</p>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                            {chat.unread && (
+                              <span className="h-2 w-2 rounded-full bg-gold-500" />
+                            )}
+                            <span>{chat.time}</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1 line-clamp-1">
+                          {chat.preview}
+                        </p>
+                      </div>
+                    </div>
                   </button>
-                </div>
-              ) : (
-                <div className="text-center py-6">
-                  <MessageCircle className="w-12 h-12 text-gold-500/60 mx-auto mb-3" />
-                  <h3 className="text-sm font-semibold text-slate-200 mb-2">
-                    Group chats are launching soon
-                  </h3>
-                  <p className="text-xs text-slate-400 mb-4 max-w-sm mx-auto">
-                    You&apos;ll be able to chat inside your groups. For now, you can still explore and RSVP to hangouts.
-                  </p>
-                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleGoToChats}
-                      className="inline-flex items-center rounded-full border border-gold-600/40 text-gold-500 px-4 py-2 text-sm font-medium hover:bg-gold-500/10 transition-colors"
-                    >
-                      Go to chats
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleBrowseGroups}
-                      className="text-xs text-slate-400 hover:text-gold-500 transition-colors underline underline-offset-2"
-                    >
-                      Browse groups
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
 
-        {/* This Week - Events section (secondary) */}
-        {!loading && user && (
-          <section className="mt-8 space-y-7">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-base md:text-lg font-semibold">This week</h2>
-            </div>
-
-            {/* Events you're hosting */}
-            <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-5 md:p-6 hover:border-gold-500/30 hover:shadow-[0_0_15px_rgba(245,196,81,0.2)] transition-colors">
-              <div className="flex items-center justify-between mb-3 pb-3 border-b border-white/5">
-                <div>
-                  <h3 className="text-sm font-semibold">
-                    Events you&apos;re hosting ({hostedEvents.length})
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Invite others into what you&apos;re building.
-                  </p>
-                </div>
-                {isSteward && (
-                  <button
-                    type="button"
-                    onClick={handleGoToHost}
-                    className="hidden md:inline-flex items-center rounded-full border border-slate-700 px-3 py-1.5 text-[11px] text-slate-50 hover:bg-slate-800"
-                  >
-                    Host event
-                  </button>
+        {/* Today's devotion */}
+        <section className="space-y-4">
+          <h2 className="text-base md:text-lg font-semibold">Today&apos;s Devotion</h2>
+          <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-5 hover:border-gold-500/40 hover:shadow-[0_0_16px_rgba(245,196,81,0.2)] transition-all">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gold-500/10 border border-gold-500/30 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-gold-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-100">Today&apos;s Devotion</p>
+                <p className="text-sm text-slate-300 mt-2 line-clamp-2">
+                  &quot;The Lord is my shepherd; I shall not want.&quot;
+                </p>
+                <p className="text-xs text-slate-400 mt-1">Psalm 23:1–6</p>
+                <p className="text-xs text-slate-400 mt-2">
+                  What stood out to you today?
+                </p>
+                {devotionStreak > 0 && (
+                  <p className="text-xs text-gold-500 mt-2">🔥 {devotionStreak}-day streak</p>
                 )}
               </div>
-
-              {eventsLoading ? (
-                <p className="text-xs text-slate-400">Loading...</p>
-              ) : hostedEvents.length === 0 ? (
-                <div className="text-xs text-slate-400">
-                  <p>You&apos;re not hosting any events yet.</p>
-                  {isSteward && (
-                    <button
-                      type="button"
-                      onClick={handleGoToHost}
-                      className="mt-3 inline-flex items-center rounded-full bg-gold-500 text-navy-900 px-3 py-1.5 text-[11px] font-semibold hover:bg-gold-600"
-                    >
-                      Host an event
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid gap-5 md:grid-cols-2">
-                  {hostedEvents.slice(0, 3).map((event) => {
-                    const { date, time } = formatEventDate(event.start_time);
-                    return (
-                      <button
-                        key={event.id}
-                        onClick={() => router.push(`/events/${event.id}`)}
-                        className="w-full text-left p-4 bg-navy-900/60 border border-white/10 rounded-xl hover:border-gold-500/40 hover:shadow-[0_0_10px_rgba(245,196,81,0.15)] transition-all"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-200 truncate">
-                              {event.title}
-                            </p>
-                            <div className="flex items-center space-x-3 mt-1 text-xs text-slate-400">
-                              <span className="flex items-center space-x-1">
-                                <Calendar className="w-3 h-3" />
-                                <span>{date}</span>
-                              </span>
-                              <span className="flex items-center space-x-1">
-                                <Clock className="w-3 h-3" />
-                                <span>{time}</span>
-                              </span>
-                              {event.location && (
-                                <span className="flex items-center space-x-1">
-                                  <MapPin className="w-3 h-3" />
-                                  <span className="truncate">
-                                    {event.location}
-                                  </span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2 ml-2">
-                            <Users className="w-4 h-4 text-slate-400" />
-                            <span className="text-xs text-slate-400">
-                              {event.rsvp_count}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {hostedEvents.length > 3 && (
-                    <button
-                      onClick={() => router.push("/events")}
-                      className="text-xs text-gold-500 hover:text-gold-600 mt-2"
-                    >
-                      View all {hostedEvents.length} hosted events →
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
-
-            {/* Events you're going to */}
-            <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-5 md:p-6 hover:border-gold-500/30 hover:shadow-[0_0_15px_rgba(245,196,81,0.2)] transition-colors">
-              <div className="mb-3 pb-3 border-b border-white/5">
-                <h3 className="text-sm font-semibold">
-                  Events you&apos;re going to ({joinedEvents.length})
-                </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Keep track of where you&apos;re showing up next.
-                </p>
-              </div>
-
-              {eventsLoading ? (
-                <p className="text-xs text-slate-400">Loading...</p>
-              ) : joinedEvents.length === 0 ? (
-                <p className="text-xs text-slate-400">
-                  You haven&apos;t joined any events yet. Try{" "}
-                  <button
-                    type="button"
-                    onClick={handleGoToDiscover}
-                    className="underline underline-offset-2 text-gold-500 hover:text-gold-600"
-                  >
-                    Find your people
-                  </button>{" "}
-                  above.
-                </p>
-              ) : (
-                <div className="grid gap-5 md:grid-cols-2">
-                  {joinedEvents.slice(0, 3).map((event) => {
-                    const { date, time } = formatEventDate(event.start_time);
-                    return (
-                      <button
-                        key={event.id}
-                        onClick={() => router.push(`/events/${event.id}`)}
-                        className="w-full text-left p-4 bg-navy-900/60 border border-white/10 rounded-xl hover:border-gold-500/40 hover:shadow-[0_0_10px_rgba(245,196,81,0.15)] transition-all"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-200 truncate">
-                              {event.title}
-                            </p>
-                            <div className="flex items-center space-x-3 mt-1 text-xs text-slate-400">
-                              <span className="flex items-center space-x-1">
-                                <Calendar className="w-3 h-3" />
-                                <span>{date}</span>
-                              </span>
-                              <span className="flex items-center space-x-1">
-                                <Clock className="w-3 h-3" />
-                                <span>{time}</span>
-                              </span>
-                              {event.location && (
-                                <span className="flex items-center space-x-1">
-                                  <MapPin className="w-3 h-3" />
-                                  <span className="truncate">
-                                    {event.location}
-                                  </span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2 ml-2">
-                            <Users className="w-4 h-4 text-slate-400" />
-                            <span className="text-xs text-slate-400">
-                              {event.rsvp_count}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {joinedEvents.length > 3 && (
-                    <button
-                      onClick={() => router.push("/events")}
-                      className="text-xs text-gold-500 hover:text-gold-600"
-                    >
-                      View all {joinedEvents.length} joined events →
-                    </button>
-                  )}
-                </div>
-              )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => router.push("/devotions")}
+                className="rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-xs font-semibold hover:bg-gold-600 transition-colors"
+              >
+                Read
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/devotions")}
+                className="rounded-full border border-gold-600/40 text-gold-500 px-4 py-2 text-xs font-semibold hover:bg-gold-500/10 transition-colors"
+              >
+                <Heart className="w-3 h-3 inline-block mr-1" />
+                Reflect
+              </button>
+              <button
+                type="button"
+                onClick={handleGoToChats}
+                disabled={userGroups.length === 0}
+                className="rounded-full border border-white/15 text-slate-200 px-4 py-2 text-xs font-semibold hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Share to group
+              </button>
             </div>
-          </section>
-        )}
-
-        {/* Recommended for you */}
-        <section className="space-y-3 pb-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base md:text-lg font-semibold">
-              Recommended for you
-            </h2>
-            {/* TODO: Surface filters (interests, location) once available */}
+            {userGroups.length === 0 && (
+              <p className="text-[11px] text-slate-500 mt-2">
+                Join a group to share devotions with others.
+              </p>
+            )}
           </div>
+        </section>
 
-          {recommendedLoading ? (
-            <p className="text-xs text-slate-400">Loading recommendations…</p>
-          ) : recommendedEvents.length === 0 ? (
-            <p className="text-xs text-slate-400">
-              No upcoming events yet. As people start hosting, we&apos;ll show
-              them here.
-            </p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-3">
-              {recommendedEvents.map((event) => {
-                const { date, time } = formatEventDate(event.start_time);
-                return (
-                  <button
-                    key={event.id}
-                    onClick={() => router.push(`/events/${event.id}`)}
-                    className="text-left bg-navy-900/40 border border-white/10 rounded-2xl p-4 hover:border-gold-500/30 hover:bg-navy-900/70 transition-colors shadow-sm"
-                  >
-                    <p className="text-sm font-semibold text-slate-50 line-clamp-2">
-                      {event.title}
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-400 line-clamp-2">
-                      {event.description}
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
-                      <span className="inline-flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        <span>{date}</span>
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{time}</span>
-                      </span>
-                      {event.location && (
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          <span className="truncate max-w-[100px]">
-                            {event.location}
-                          </span>
-                        </span>
+        {/* People you might like */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base md:text-lg font-semibold">People you might like</h2>
+            <button
+              type="button"
+              onClick={handleGoToDiscoverPeople}
+              className="inline-flex items-center gap-2 rounded-full border border-gold-500/40 bg-gold-500/10 px-3 py-1.5 text-xs font-semibold text-gold-100 hover:bg-gold-500/20"
+            >
+              <Search className="w-3.5 h-3.5" />
+              Discover people & churches
+            </button>
+          </div>
+          <div className="space-y-3">
+            {peopleLoading ? (
+              <p className="text-xs text-slate-400">Finding people near you…</p>
+            ) : suggestedPeople.length === 0 ? (
+              <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-4 text-center">
+                <p className="text-sm text-slate-200">
+                  We couldn&apos;t find matches yet.
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Add interests to help us suggest the right people.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/profile")}
+                  className="mt-3 inline-flex items-center rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-xs font-semibold hover:bg-gold-600 transition-colors"
+                >
+                  Update profile
+                </button>
+              </div>
+            ) : (
+              suggestedPeople.map((person) => (
+                <div
+                  key={person.id}
+                  className="bg-navy-900/40 border border-white/10 rounded-2xl p-4 hover:border-gold-500/40 hover:shadow-[0_0_18px_rgba(245,196,81,0.2)] transition-all"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full bg-gold-500/20 border border-gold-500/40 flex items-center justify-center text-gold-500 font-semibold overflow-hidden">
+                      {person.avatarUrl ? (
+                        <img
+                          src={person.avatarUrl}
+                          alt={person.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        getInitials(person.name)
                       )}
                     </div>
-                    {/* TODO: Filter recommendations by user interests & location */}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-100">{person.name}</p>
+                          <p className="text-xs text-slate-400">{person.city}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleGoToDiscoverPeople}
+                          className="rounded-full bg-gold-500 text-navy-900 px-3 py-1.5 text-[11px] font-semibold hover:bg-gold-600 transition-colors"
+                        >
+                          Connect
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {person.interests.map((interest: string) => (
+                          <span
+                            key={interest}
+                            className="px-2 py-0.5 rounded-full bg-white/5 text-[11px] text-slate-200 border border-white/10"
+                          >
+                            {interest}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-2">{person.reason}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        {/* Your groups */}
+        <section className="space-y-4 pb-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base md:text-lg font-semibold">Your groups</h2>
+            <button
+              type="button"
+              onClick={handleBrowseGroups}
+              className="text-xs text-gold-500 hover:text-gold-600"
+            >
+              See all groups →
+            </button>
+          </div>
+          <div className="space-y-3">
+            {groupsLoading ? (
+              <p className="text-xs text-slate-400">Loading your groups…</p>
+            ) : userGroups.length === 0 ? (
+              <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-5 text-center">
+                <p className="text-sm text-slate-300">
+                  You haven&apos;t joined a group yet. This is where your people live.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleBrowseGroups}
+                  className="mt-3 inline-flex items-center rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-xs font-semibold hover:bg-gold-600 transition-colors"
+                >
+                  Explore groups
+                </button>
+              </div>
+            ) : (
+              userGroups.slice(0, 3).map((group: FellowshipGroup) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => router.push(`/fellowship/${group.id}`)}
+                  className="w-full text-left bg-navy-900/40 border border-white/10 rounded-2xl p-4 hover:border-gold-500/30 hover:shadow-[0_0_12px_rgba(245,196,81,0.2)] transition-all"
+                >
+                  <p className="text-sm font-semibold text-slate-100">{group.name}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                    {group.location && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        <span className="truncate">{group.location}</span>
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <Users className="w-3 h-3" />
+                      <span>{group.member_count || 0} members</span>
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
         </section>
       </div>
+      <FounderMessageModal
+        isOpen={showFounderMessage}
+        onClose={() => setShowFounderMessage(false)}
+      />
     </main>
   );
 }

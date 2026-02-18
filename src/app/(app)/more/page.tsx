@@ -4,20 +4,26 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useUserProfile } from '@/hooks/useUserProfile'
-import { 
-  User, 
-  Calendar, 
-  Users, 
-  Award, 
+import {
+  User,
+  Calendar,
+  Users,
+  Award,
   Settings,
   MapPin,
   Edit,
   ChevronRight,
   Sparkles,
+  Bookmark,
   BookOpen,
-  Heart
+  Heart,
+  MessageCircle,
+  Shield,
 } from 'lucide-react'
 import Image from 'next/image'
+import type { Church } from '@/types/church'
+import ChurchCard from '@/components/discovery/ChurchCard'
+import { getSavedChurches } from '@/lib/saved-churches'
 
 export default function MorePage() {
   const router = useRouter()
@@ -26,14 +32,35 @@ export default function MorePage() {
   // Extract name from profile
   const displayName = profile?.name || user?.email?.split('@')[0] || 'User'
   const firstName = displayName.split(' ')[0] || displayName
+  const [savedChurches, setSavedChurches] = useState<Church[]>([])
+
+  useEffect(() => {
+    setSavedChurches(getSavedChurches())
+  }, [])
 
   const menuItems = [
     {
+      id: 'whats-new',
+      label: "What's New",
+      icon: Sparkles,
+      route: '/more/whats-new',
+      description: 'Recent updates to Gathered',
+      comingSoon: false
+    },
+    {
       id: 'saved-verses',
       label: 'Saved Verses',
-      icon: Sparkles,
+      icon: Bookmark,
       route: '/more/saved-verses',
       description: 'Verses you\'ve saved from devotions',
+      comingSoon: false
+    },
+    {
+      id: 'founder-message',
+      label: 'Founder Message',
+      icon: MessageCircle,
+      route: '/more/founder-message',
+      description: 'A note from the founder',
       comingSoon: false
     },
     {
@@ -53,12 +80,20 @@ export default function MorePage() {
       comingSoon: false
     },
     {
-      id: 'friends',
-      label: 'Friends',
+      id: 'connections',
+      label: 'Connections',
       icon: Users,
-      route: '#',
-      description: 'Connect with friends',
-      comingSoon: true
+      route: '/more/connections',
+      description: 'Manage your connections',
+      comingSoon: false
+    },
+    {
+      id: 'community-guidelines',
+      label: 'Community Guidelines',
+      icon: Shield,
+      route: '/community-guidelines',
+      description: 'Safety rules and expectations',
+      comingSoon: false
     },
     {
       id: 'badges',
@@ -199,6 +234,33 @@ export default function MorePage() {
               </button>
             )
           })}
+        </div>
+
+        {/* Saved Churches */}
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-slate-50">Saved Churches</h2>
+            <button
+              onClick={() => router.push('/discover')}
+              className="text-xs text-gold-400 hover:text-gold-300"
+            >
+              Find more
+            </button>
+          </div>
+          {savedChurches.length === 0 ? (
+            <div className="bg-navy-900/40 border border-white/10 rounded-2xl p-5 text-center">
+              <p className="text-sm text-slate-300">No saved churches yet.</p>
+              <p className="mt-2 text-xs text-slate-500">
+                Save churches from Discovery to see them here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {savedChurches.map((church) => (
+                <ChurchCard key={church.id} church={church} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Footer Info */}

@@ -104,12 +104,16 @@ export async function getAuthenticatedUser(req: NextRequest): Promise<{ userId: 
     const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.substring(7);
+      console.log("Found Authorization header, verifying token...");
       const { data: { user }, error } = await supabase.auth.getUser(token);
       if (error) {
         console.error("Error verifying token from Authorization header:", error);
       } else if (user) {
+        console.log("Successfully authenticated user from Authorization header:", user.id);
         return { userId: user.id, email: user.email };
       }
+    } else {
+      console.log("No Authorization header found");
     }
 
     // Try to get from cookies (Supabase stores session in cookies)

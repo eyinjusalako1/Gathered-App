@@ -2,9 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { AGENTS } from "@/agents/config";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy client creation - only create if API key exists
+function getClient(): OpenAI | null {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+  try {
+    return new OpenAI({ apiKey });
+  } catch {
+    return null;
+  }
+}
 
 const MOCK_MODE = process.env.GATHERED_MOCK_AGENTS === "true";
 
@@ -315,6 +324,11 @@ export async function POST(
 
 async function callLLM(args: { systemPrompt: string; userContent: string }) {
   const { systemPrompt, userContent } = args;
+
+  const client = getClient();
+  if (!client) {
+    throw new Error("OpenAI API key not configured");
+  }
 
   const completion = await client.chat.completions.create({
     model: "gpt-4o-mini",

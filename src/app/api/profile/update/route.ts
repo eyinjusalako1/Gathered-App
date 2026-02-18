@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
     if (profileData.avatar_url !== undefined) updatePayload.avatar_url = profileData.avatar_url || null;
     if (profileData.avatarUrl !== undefined) updatePayload.avatar_url = profileData.avatarUrl || null; // Handle avatarUrl from form
     if (profileData.role !== undefined) updatePayload.role = profileData.role || null; // Handle role switching
+    if (profileData.my_church_id !== undefined) updatePayload.my_church_id = profileData.my_church_id || null;
+    if (profileData.discoverable !== undefined) updatePayload.discoverable = profileData.discoverable;
     // Note: denomination is stored in auth.users.user_metadata, not user_profiles
     // We'll need to update it separately if needed
 

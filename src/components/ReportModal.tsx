@@ -2,14 +2,27 @@
 
 import React, { useState } from 'react'
 import { X, AlertTriangle, Flag } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
+import { supabase } from '@/lib/supabase'
 
 interface ReportModalProps {
   isOpen: boolean
   onClose: () => void
-  contentType: 'message' | 'testimony' | 'prayer' | 'comment' | 'user'
+  contentType: 'message' | 'testimony' | 'prayer' | 'comment' | 'user' | 'group' | 'event'
+  contentId?: string | null
+  reportedUserId?: string | null
+  onSubmitted?: () => void
 }
 
-export default function ReportModal({ isOpen, onClose, contentType }: ReportModalProps) {
+export default function ReportModal({
+  isOpen,
+  onClose,
+  contentType,
+  contentId,
+  reportedUserId,
+  onSubmitted,
+}: ReportModalProps) {
+  const toast = useToast()
   const [selectedReason, setSelectedReason] = useState('')
   const [description, setDescription] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -29,14 +42,40 @@ export default function ReportModal({ isOpen, onClose, contentType }: ReportModa
 
     setIsLoading(true)
 
-    // Simulate reporting
-    setTimeout(() => {
-      setIsLoading(false)
-      alert('Thank you for reporting. We will review this content shortly.')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers: HeadersInit = { 'Content-Type': 'application/json' }
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+
+      const response = await fetch('/api/safety/report', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          content_type: contentType,
+          content_id: contentId || null,
+          reported_user_id: reportedUserId || null,
+          reason: selectedReason,
+          description,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to submit report')
+      }
+
+      toast({ title: 'Report submitted', variant: 'success' })
       setSelectedReason('')
       setDescription('')
+      onSubmitted?.()
       onClose()
-    }, 1500)
+    } catch (error: any) {
+      toast({ title: 'Failed to submit report', description: error.message, variant: 'error' })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   if (!isOpen) return null

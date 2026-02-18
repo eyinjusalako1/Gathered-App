@@ -1,20 +1,35 @@
 'use client'
 
 import React, { useState } from 'react'
-import { X, Mail, UserPlus, CheckCircle } from 'lucide-react'
+import { X, Mail, UserPlus, CheckCircle, Share2, Copy } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
+import { supabase } from '@/lib/supabase'
 
 interface MemberInviteModalProps {
   isOpen: boolean
   onClose: () => void
   fellowshipName: string
+  fellowshipId?: string
+  inviteUrl?: string
+  onCreateInvite?: () => Promise<void>
+  creatingInvite?: boolean
 }
 
-export default function MemberInviteModal({ isOpen, onClose, fellowshipName }: MemberInviteModalProps) {
+export default function MemberInviteModal({
+  isOpen,
+  onClose,
+  fellowshipName,
+  fellowshipId,
+  inviteUrl,
+  onCreateInvite,
+  creatingInvite = false,
+}: MemberInviteModalProps) {
   const [inviteMethod, setInviteMethod] = useState<'email' | 'link'>('email')
   const [emailInput, setEmailInput] = useState('')
   const [message, setMessage] = useState(`Join ${fellowshipName} on Gathered!`)
   const [isLoading, setIsLoading] = useState(false)
   const [sent, setSent] = useState(false)
+  const toast = useToast()
 
   const handleInvite = async () => {
     if (inviteMethod === 'email' && !emailInput.trim()) {
@@ -23,31 +38,110 @@ export default function MemberInviteModal({ isOpen, onClose, fellowshipName }: M
 
     setIsLoading(true)
 
-    // Simulate sending invite
-    setTimeout(() => {
-      setIsLoading(false)
+    try {
+      if (!fellowshipId) {
+        throw new Error('Missing fellowship ID')
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('Please log in to send invites')
+      }
+
+      const response = await fetch('/api/invites/email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: emailInput.trim(),
+          group_id: fellowshipId,
+          message: message?.trim(),
+        }),
+      })
+
+      if (response.status === 403) {
+        toast({
+          title: 'You need to join this group before inviting others.',
+          variant: 'error',
+        })
+        return
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to send invite email')
+      }
+
       setSent(true)
-      
-      // Reset after showing success
+      toast({
+        title: 'Invitation sent',
+        description: `Sent to ${emailInput.trim()}`,
+        variant: 'success',
+      })
+
       setTimeout(() => {
         setSent(false)
         setEmailInput('')
         onClose()
       }, 2000)
-    }, 1500)
+    } catch (error: any) {
+      console.error('Error sending invite email:', error)
+      toast({
+        title: 'Failed to send invite',
+        description: error.message || 'Please try again',
+        variant: 'error',
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleCopyLink = () => {
-    const inviteLink = `https://gathered.app/join?code=FLW${Math.random().toString(36).substr(2, 9).toUpperCase()}`
-    navigator.clipboard.writeText(inviteLink)
-    // Could show a toast notification here
+  const handleCopyLink = async () => {
+    if (!inviteUrl) return
+    try {
+      await navigator.clipboard.writeText(inviteUrl)
+      toast({
+        title: 'Copied — paste anywhere',
+        variant: 'success',
+      })
+    } catch (error) {
+      console.error('Failed to copy invite link:', error)
+      toast({
+        title: 'Copy failed',
+        description: 'Please try again',
+        variant: 'error',
+      })
+    }
+  }
+
+  const handleShareInvite = async () => {
+    if (!inviteUrl) return
+    const shareText = `Join my group on Gathered: ${fellowshipName} 🙌`
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Join ${fellowshipName} on Gathered`,
+          text: shareText,
+          url: inviteUrl,
+        })
+        return
+      }
+      await handleCopyLink()
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') {
+        console.error('Error sharing invite:', error)
+      }
+    }
   }
 
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#0F1433] border border-[#D4AF37] rounded-2xl p-6 max-w-md w-full relative">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-[#0F1433] border border-[#D4AF37] rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-md relative max-h-[85vh] overflow-y-auto">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -66,6 +160,9 @@ export default function MemberInviteModal({ isOpen, onClose, fellowshipName }: M
             <p className="text-sm text-white/60">{fellowshipName}</p>
           </div>
         </div>
+        <p className="text-sm text-white/70 mb-6">
+          This link lets someone join {fellowshipName} instantly.
+        </p>
 
         {sent ? (
           // Success state
@@ -153,41 +250,52 @@ export default function MemberInviteModal({ isOpen, onClose, fellowshipName }: M
               </div>
             ) : (
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">Invitation Link</label>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value="https://gathered.app/join?code=FLW..."
-                      readOnly
-                      className="flex-1 bg-white/10 border border-[#D4AF37]/30 rounded-lg px-4 py-3 text-white text-sm"
-                    />
-                    <button
-                      onClick={handleCopyLink}
-                      className="bg-white/10 border border-[#D4AF37]/30 px-4 py-3 rounded-lg text-white hover:bg-white/20 transition-colors"
-                    >
-                      Copy
-                    </button>
-                  </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-white">Invitation Link</label>
+                  <input
+                    type="text"
+                    value={inviteUrl || 'No invite link yet'}
+                    readOnly
+                    className="w-full bg-white/10 border border-[#D4AF37]/30 rounded-lg px-4 py-3 text-white text-sm"
+                  />
                 </div>
 
-                <button
-                  onClick={handleInvite}
-                  disabled={isLoading}
-                  className="w-full bg-[#F5C451] text-[#0F1433] py-3 rounded-lg font-semibold hover:bg-[#D4AF37] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#0F1433]"></div>
-                      <span>Generating...</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-4 h-4" />
-                      <span>Generate Link</span>
-                    </>
-                  )}
-                </button>
+                {!inviteUrl ? (
+                  <button
+                    onClick={onCreateInvite}
+                    disabled={creatingInvite || !onCreateInvite}
+                    className="w-full bg-[#F5C451] text-[#0F1433] py-3 rounded-lg font-semibold hover:bg-[#D4AF37] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                  >
+                    {creatingInvite ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#0F1433]"></div>
+                        <span>Creating link...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        <span>Generate invite link</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={handleShareInvite}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#F5C451] text-[#0F1433] py-3 font-semibold hover:bg-[#D4AF37] transition-colors"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>Share invite</span>
+                    </button>
+                    <button
+                      onClick={handleCopyLink}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-[#D4AF37]/50 text-white py-3 font-semibold hover:bg-white/10 transition-colors"
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span>Copy link</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>
