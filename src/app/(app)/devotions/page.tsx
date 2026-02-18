@@ -40,7 +40,6 @@ const STORAGE_KEYS = {
   STREAK: 'devotions_streak',
   LAST_COMPLETED: 'devotions_last_completed',
   TOTAL_READINGS: 'devotions_total_readings',
-  REFLECTIONS: 'devotions_reflections',
   SAVED_VERSES: 'devotions_saved_verses'
 }
 
@@ -125,8 +124,31 @@ export default function DevotionsPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
   const [sharing, setSharing] = useState(false)
   
+  const getTodayKey = () => {
+    const today = new Date()
+    const dd = String(today.getDate()).padStart(2, '0')
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const yyyy = today.getFullYear()
+    return `${dd}-${mm}-${yyyy}`
+  }
+
+  const todayKey = React.useMemo(() => getTodayKey(), [])
+  const reflectionStorageKey = React.useMemo(() => {
+    if (user?.id) {
+      return `gathered_reflection_${user.id}_${todayKey}`
+    }
+    return `gathered_reflection_${todayKey}`
+  }, [user?.id, todayKey])
+
+  const clearReflectionStorage = React.useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.removeItem(reflectionStorageKey)
+  }, [reflectionStorageKey])
+
   // Load stats from localStorage on mount
   useEffect(() => {
+    if (typeof window === 'undefined') return
+
     const savedStreak = localStorage.getItem(STORAGE_KEYS.STREAK)
     const savedTotal = localStorage.getItem(STORAGE_KEYS.TOTAL_READINGS)
     const savedLastCompleted = localStorage.getItem(STORAGE_KEYS.LAST_COMPLETED)
@@ -135,17 +157,29 @@ export default function DevotionsPage() {
     if (savedTotal) setTotalReadings(parseInt(savedTotal, 10))
     if (savedLastCompleted) setLastCompletedDate(savedLastCompleted)
     
-    // Load saved reflection and prayer for today
-    const today = new Date().toISOString().split('T')[0]
-    const savedReflections = JSON.parse(localStorage.getItem(STORAGE_KEYS.REFLECTIONS) || '{}')
-    
-    if (savedReflections[today]) setReflection(savedReflections[today])
-    
     // Check if today's reading is already completed
-    if (savedLastCompleted === today) {
+    const todayIso = new Date().toISOString().split('T')[0]
+    if (savedLastCompleted === todayIso) {
       setTodayReading(prev => ({ ...prev, isCompleted: true }))
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const saved = window.localStorage.getItem(reflectionStorageKey)
+    if (saved !== null && saved !== reflection) {
+      setReflection(saved)
+    }
+  }, [reflectionStorageKey])
+
+  const handleReflectionChange = React.useCallback(
+    (value: string) => {
+      setReflection(value)
+      if (typeof window === 'undefined') return
+      window.localStorage.setItem(reflectionStorageKey, value)
+    },
+    [reflectionStorageKey]
+  )
   
   // Load user groups for community section
   useEffect(() => {
@@ -168,6 +202,7 @@ export default function DevotionsPage() {
   }
   
   const handleMarkComplete = () => {
+    clearReflectionStorage()
     const today = new Date().toISOString().split('T')[0]
     
     // Prevent double-completing on same day
@@ -265,6 +300,7 @@ export default function DevotionsPage() {
   }
   
   const handleShareToGroup = () => {
+    clearReflectionStorage()
     if (userGroups.length === 0) {
       router.push('/fellowship')
       return
@@ -457,7 +493,7 @@ export default function DevotionsPage() {
               <textarea
                 id="daily-walk-reflection"
                 value={reflection}
-                onChange={(e) => setReflection(e.target.value)}
+                onChange={(e) => handleReflectionChange(e.target.value)}
                 placeholder="What is God showing you through this today?"
                 className="w-full px-4 py-3 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 resize-none"
                 rows={4}
