@@ -6,11 +6,11 @@ import { useAuth } from '@/lib/auth-context'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useToast } from '@/components/ui/Toast'
 import { FellowshipService } from '@/lib/fellowship-service'
+import { dailyWalk } from '@/lib/dailyWalk'
 import { FellowshipGroup } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { 
   BookOpen, 
-  Calendar, 
   TrendingUp, 
   CheckCircle, 
   Clock, 
@@ -19,11 +19,9 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
-  Heart,
   MessageCircle,
   Users,
-  ArrowRight,
-  Share2
+  ArrowRight
 } from 'lucide-react'
 
 interface Reading {
@@ -38,22 +36,12 @@ interface Reading {
   reflectionPrompts?: string[]
 }
 
-interface Plan {
-  id: string
-  name: string
-  duration: string
-  description: string
-  progress: number
-  isActive: boolean
-}
-
 // localStorage keys
 const STORAGE_KEYS = {
   STREAK: 'devotions_streak',
   LAST_COMPLETED: 'devotions_last_completed',
   TOTAL_READINGS: 'devotions_total_readings',
   REFLECTIONS: 'devotions_reflections',
-  PRAYERS: 'devotions_prayers',
   SAVED_VERSES: 'devotions_saved_verses'
 }
 
@@ -94,33 +82,6 @@ and I shall dwell in the house of the LORD
   }
 ]
 
-const mockPlans: Plan[] = [
-  {
-    id: '1',
-    name: '30 Days in the Gospels',
-    duration: '30 days',
-    description: 'A journey through the life and teachings of Jesus',
-    progress: 17,
-    isActive: true
-  },
-  {
-    id: '2',
-    name: 'The Psalms',
-    duration: '60 days',
-    description: 'Every day in the Psalms for two months',
-    progress: 0,
-    isActive: false
-  },
-  {
-    id: '3',
-    name: 'Read the Bible in a Year',
-    duration: '365 days',
-    description: 'Complete Bible reading plan',
-    progress: 0,
-    isActive: false
-  }
-]
-
 const VERSE_OF_THE_DAY = {
   verse: 'John 3:16',
   text: 'For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.'
@@ -132,8 +93,10 @@ export default function DevotionsPage() {
   const { isSteward } = useUserProfile()
   const toast = useToast()
   
+  const todayIndex = new Date().getDate() % dailyWalk.length
+  const todayWalk = dailyWalk[todayIndex]
+
   const [todayReading, setTodayReading] = useState<Reading>(mockReadings[0])
-  const [activePlans, setActivePlans] = useState<Plan[]>(mockPlans.filter(p => p.isActive))
   const [userGroups, setUserGroups] = useState<FellowshipGroup[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
   
@@ -145,7 +108,6 @@ export default function DevotionsPage() {
   // State for expandable sections
   const [isPassageExpanded, setIsPassageExpanded] = useState(false)
   const [reflection, setReflection] = useState('')
-  const [prayer, setPrayer] = useState('')
   
   // State for share modal
   const [showShareModal, setShowShareModal] = useState(false)
@@ -165,10 +127,8 @@ export default function DevotionsPage() {
     // Load saved reflection and prayer for today
     const today = new Date().toISOString().split('T')[0]
     const savedReflections = JSON.parse(localStorage.getItem(STORAGE_KEYS.REFLECTIONS) || '{}')
-    const savedPrayers = JSON.parse(localStorage.getItem(STORAGE_KEYS.PRAYERS) || '{}')
     
     if (savedReflections[today]) setReflection(savedReflections[today])
-    if (savedPrayers[today]) setPrayer(savedPrayers[today])
     
     // Check if today's reading is already completed
     if (savedLastCompleted === today) {
@@ -240,20 +200,6 @@ export default function DevotionsPage() {
       description: `Your streak is now ${newStreak} days. Keep it up!`,
       variant: 'success',
       duration: 3000,
-    })
-  }
-  
-  const handleSaveReflection = () => {
-    const today = new Date().toISOString().split('T')[0]
-    const savedReflections = JSON.parse(localStorage.getItem(STORAGE_KEYS.REFLECTIONS) || '{}')
-    savedReflections[today] = reflection
-    localStorage.setItem(STORAGE_KEYS.REFLECTIONS, JSON.stringify(savedReflections))
-    
-    toast({
-      title: 'Reflection saved',
-      description: 'Your reflection has been saved.',
-      variant: 'success',
-      duration: 2000,
     })
   }
   
@@ -433,7 +379,7 @@ export default function DevotionsPage() {
                 <BookOpen className="w-5 h-5 text-gold-500" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-slate-50">Today&apos;s Reading</h2>
+                <h2 className="text-lg font-semibold text-slate-50">Today&apos;s Word for You</h2>
                 <p className="text-sm text-slate-400">{todayReading.verse}</p>
               </div>
             </div>
@@ -475,6 +421,44 @@ export default function DevotionsPage() {
               </button>
             )}
           </div>
+
+          <div className="mt-6 space-y-4">
+            <div className="bg-navy-900/50 rounded-lg p-4 border border-gold-500/20">
+              <h4 className="text-sm font-semibold text-gold-200 mb-2">💭 Reflection</h4>
+              <p className="text-sm text-slate-200 leading-relaxed">
+                {todayWalk?.reflection?.trim() ||
+                  'Pause and consider what this passage reveals about God and how it applies to your life today.'}
+              </p>
+            </div>
+
+            <div className="bg-navy-900/50 rounded-lg p-4 border border-gold-500/20">
+              <h4 className="text-sm font-semibold text-gold-200 mb-2">🙏 Prayer</h4>
+              <p className="text-sm text-slate-200 leading-relaxed">
+                {todayWalk?.prayer?.trim() ||
+                  'Ask God to speak clearly and to strengthen you to live out His Word today.'}
+              </p>
+            </div>
+
+            <div className="bg-navy-900/50 rounded-lg p-4 border border-gold-500/20 space-y-3">
+              <label htmlFor="daily-walk-reflection" className="text-sm font-semibold text-gold-200">
+                ✍️ Your reflection
+              </label>
+              <textarea
+                id="daily-walk-reflection"
+                value={reflection}
+                onChange={(e) => setReflection(e.target.value)}
+                placeholder="What is God showing you through this today?"
+                className="w-full px-4 py-3 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 resize-none"
+                rows={4}
+              />
+              <button
+                onClick={handleShareToGroup}
+                className="w-full bg-gold-500 hover:bg-gold-600 text-navy-900 px-4 py-3 rounded-lg font-medium transition-colors"
+              >
+                Share reflection to group
+              </button>
+            </div>
+          </div>
           
           {/* Expanded Passage Section */}
           {isPassageExpanded && (
@@ -504,62 +488,6 @@ export default function DevotionsPage() {
                 </div>
               )}
               
-              {/* Notes/Reflection */}
-              <div>
-                <label htmlFor="reflection" className="block text-sm font-medium text-slate-300 mb-2">
-                  Your Reflection
-                </label>
-                <textarea
-                  id="reflection"
-                  value={reflection}
-                  onChange={(e) => setReflection(e.target.value)}
-                  placeholder="Write your thoughts, insights, or reflections here..."
-                  className="w-full px-4 py-3 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 resize-none"
-                  rows={4}
-                />
-              </div>
-              
-              {/* Prayer */}
-              <div>
-                <label htmlFor="prayer" className="block text-sm font-medium text-slate-300 mb-2">
-                  Prayer
-                </label>
-                <textarea
-                  id="prayer"
-                  value={prayer}
-                  onChange={(e) => setPrayer(e.target.value)}
-                  placeholder="Write your prayer here..."
-                  className="w-full px-4 py-3 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 resize-none"
-                  rows={3}
-                />
-              </div>
-              
-              {/* Save Button */}
-              <button
-                onClick={handleSaveReflection}
-                className="w-full bg-gold-500 hover:bg-gold-600 text-navy-900 px-4 py-3 rounded-lg font-medium transition-colors"
-              >
-                Save reflection
-              </button>
-              
-              {/* Share to Group */}
-              {userGroups.length > 0 ? (
-                <button
-                  onClick={handleShareToGroup}
-                  className="w-full flex items-center justify-center space-x-2 border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 px-4 py-3 rounded-lg font-medium transition-colors"
-                >
-                  <Share2 className="w-4 h-4" />
-                  <span>Share to group</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => router.push('/fellowship')}
-                  className="w-full flex items-center justify-center space-x-2 border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 px-4 py-3 rounded-lg font-medium transition-colors"
-                >
-                  <Users className="w-4 h-4" />
-                  <span>Join a group to discuss</span>
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -652,48 +580,6 @@ export default function DevotionsPage() {
             </button>
           </div>
         </div>
-
-        {/* Active Plans */}
-        {activePlans.length > 0 && (
-          <div className="mb-8 bg-navy-800/30 border border-white/10 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-50">Active Plans</h3>
-              <button
-                onClick={() => router.push('/devotions/plans')}
-                className="text-sm text-gold-500 hover:text-gold-400 transition-colors"
-              >
-                Browse all
-              </button>
-            </div>
-            <div className="space-y-4">
-              {activePlans.map(plan => (
-                <div key={plan.id} className="bg-navy-900/50 rounded-lg p-4 border border-white/5 hover:border-gold-500/30 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-slate-50">{plan.name}</h4>
-                    <span className="text-xs text-slate-400">{plan.progress}%</span>
-                  </div>
-                  <p className="text-sm text-slate-300 mb-3">{plan.description}</p>
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="flex-1 bg-navy-800 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-gold-500 to-gold-600 h-full transition-all duration-300"
-                        style={{ width: `${plan.progress}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-slate-400">{plan.duration}</span>
-                  </div>
-                  <button
-                    onClick={() => router.push(`/devotions/plans/${plan.id}`)}
-                    className="flex items-center space-x-2 text-gold-500 hover:text-gold-400 text-sm font-medium transition-colors"
-                  >
-                    <span>Continue</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Community Tie-in */}
         {loadingGroups ? (
