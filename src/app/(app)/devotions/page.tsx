@@ -6,7 +6,6 @@ import { useAuth } from '@/lib/auth-context'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useToast } from '@/components/ui/Toast'
 import { FellowshipService } from '@/lib/fellowship-service'
-import { dailyWalk } from '@/lib/dailyWalk'
 import { FellowshipGroup } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { 
@@ -79,6 +78,18 @@ and I shall dwell in the house of the LORD
       'How does this passage remind you of God\'s care in your life?',
       'What does it mean for you to "dwell in the house of the LORD forever"?'
     ]
+  }
+]
+
+type DailyWalkEntry = {
+  reflection?: string
+  prayer?: string
+}
+
+const dailyWalk: DailyWalkEntry[] = [
+  {
+    reflection: '',
+    prayer: ''
   }
 ]
 
