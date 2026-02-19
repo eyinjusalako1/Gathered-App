@@ -2,6 +2,7 @@ import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import BottomNavigation from '@/components/BottomNavigation'
+import OnboardingGuard from '@/components/OnboardingGuard'
 
 function getActiveTab(pathname: string): string {
   if (pathname.startsWith('/dashboard') || pathname === '/') return 'home'
@@ -84,6 +85,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex flex-col min-h-screen bg-beige-50 dark:bg-navy-900">
+      <OnboardingGuard />
       <main className="flex-1 pb-20">
         {children}
       </main>
