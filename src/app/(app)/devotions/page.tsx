@@ -180,6 +180,17 @@ export default function DevotionsPage() {
     },
     [reflectionStorageKey]
   )
+
+  const handleSaveReflection = React.useCallback(() => {
+    if (!reflection.trim()) {
+      toast({ title: 'Write something first', variant: 'error' })
+      return
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(reflectionStorageKey, reflection)
+    }
+    toast({ title: 'Saved', variant: 'success' })
+  }, [reflection, reflectionStorageKey, toast])
   
   // Load user groups for community section
   useEffect(() => {
@@ -300,7 +311,10 @@ export default function DevotionsPage() {
   }
   
   const handleShareToGroup = () => {
-    clearReflectionStorage()
+    if (!reflection.trim()) {
+      toast({ title: 'Write something first', variant: 'error' })
+      return
+    }
     if (userGroups.length === 0) {
       router.push('/fellowship')
       return
@@ -362,6 +376,8 @@ export default function DevotionsPage() {
       })
       
       setShowShareModal(false)
+      clearReflectionStorage()
+      setReflection('')
       
       // Optional: navigate to chat after a short delay
       setTimeout(() => {
@@ -498,12 +514,23 @@ export default function DevotionsPage() {
                 className="w-full px-4 py-3 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 resize-none"
                 rows={4}
               />
-              <button
-                onClick={handleShareToGroup}
-                className="w-full bg-gold-500 hover:bg-gold-600 text-navy-900 px-4 py-3 rounded-lg font-medium transition-colors"
-              >
-                Share reflection to group
-              </button>
+              <p className="text-xs text-slate-400">
+                Your reflection is private unless you choose to share.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={handleSaveReflection}
+                  className="w-full bg-gold-500 hover:bg-gold-600 text-navy-900 px-4 py-3 rounded-lg font-medium transition-colors"
+                >
+                  Save reflection
+                </button>
+                <button
+                  onClick={handleShareToGroup}
+                  className="w-full border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 px-4 py-3 rounded-lg font-medium transition-colors"
+                >
+                  Share to group
+                </button>
+              </div>
             </div>
           </div>
           
@@ -638,11 +665,11 @@ export default function DevotionsPage() {
             <div className="flex items-center space-x-3 mb-3">
               <Users className="w-5 h-5 text-gold-500" />
               <h3 className="text-lg font-semibold text-slate-50">
-                Discuss today&apos;s reading in {userGroups[0].name}
+                Continue the conversation (optional)
               </h3>
             </div>
             <p className="text-slate-300 text-sm mb-4">
-              Share your reflections and insights with your group.
+              If you&apos;d like to share what stood out to you, bring it into your group and grow together.
             </p>
             <button
               onClick={() => router.push(`/fellowship/${userGroups[0].id}`)}
