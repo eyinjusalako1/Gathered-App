@@ -191,6 +191,14 @@ export default function OnboardingPage() {
     )
   }
 
+  const selectedValue = useMemo(() => {
+    if (step === 1) return growthIntent
+    if (step === 2) return growthFocus
+    if (step === 3) return reflectionPreference
+    if (step === 4) return engagementFrequency
+    return ''
+  }, [step, growthIntent, growthFocus, reflectionPreference, engagementFrequency])
+
   return (
     <div className="min-h-screen bg-navy-900 text-white px-4 py-10">
       <div className="max-w-md mx-auto space-y-6">
@@ -207,8 +215,19 @@ export default function OnboardingPage() {
             </button>
           )}
         </div>
+        <div className="space-y-2">
+          <p className="text-sm text-slate-300">
+            There&apos;s no pressure here. Just honesty. Let&apos;s understand where you are so we can walk with you.
+          </p>
+          <div className="h-1 w-full rounded-full bg-navy-800/70 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gold-500 transition-all duration-300"
+              style={{ width: `${Math.min(step, 5) * 20}%` }}
+            />
+          </div>
+        </div>
 
-        <div className="bg-navy-800/60 border border-white/10 rounded-2xl p-6 shadow-lg transition-all duration-300">
+        <div className="bg-gradient-to-br from-navy-800/70 to-navy-900/80 border border-white/10 rounded-2xl p-7 shadow-[0_0_30px_rgba(212,175,55,0.15)] transition-all duration-300">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-full bg-gold-500/15 flex items-center justify-center">
               <MessageCircle className="w-5 h-5 text-gold-500" />
@@ -235,7 +254,11 @@ export default function OnboardingPage() {
                 type="button"
                 disabled={saving}
                 onClick={() => handleNext(option)}
-                className="w-full rounded-2xl border border-gold-500/30 bg-navy-800/50 px-4 py-4 text-left text-sm font-semibold text-slate-100 hover:border-gold-500 hover:bg-navy-700/60 transition-colors disabled:opacity-60"
+                className={`w-full rounded-2xl border px-4 py-5 text-left text-sm font-semibold transition-all duration-200 disabled:opacity-60 ${
+                  selectedValue === option
+                    ? 'border-gold-500 bg-gold-500/10 text-gold-100 shadow-[0_0_20px_rgba(212,175,55,0.2)]'
+                    : 'border-gold-500/30 bg-navy-800/50 text-slate-100 hover:border-gold-500 hover:bg-navy-700/60 hover:-translate-y-0.5 hover:shadow-[0_10px_25px_-15px_rgba(212,175,55,0.6)]'
+                }`}
               >
                 {option}
               </button>
