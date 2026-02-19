@@ -1,8 +1,6 @@
-'use client'
-
-import { useRouter, usePathname } from 'next/navigation'
-import { useEffect } from 'react'
-import { useAuth } from '@/lib/auth-context'
+import { cookies, headers } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import BottomNavigation from '@/components/BottomNavigation'
 
 function getActiveTab(pathname: string): string {
@@ -15,65 +13,74 @@ function getActiveTab(pathname: string): string {
   return 'home'
 }
 
-export default function AppLayout({
+function getPathnameFromHeaders(): string {
+  const headerList = headers()
+  const raw =
+    headerList.get('x-pathname') ||
+    headerList.get('next-url') ||
+    headerList.get('x-nextjs-pathname') ||
+    ''
+
+  if (!raw) return ''
+  if (raw.startsWith('http')) {
+    try {
+      return new URL(raw).pathname
+    } catch {
+      return ''
+    }
+  }
+  return raw
+}
+
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const { user, loading } = useAuth()
+  const pathname = getPathnameFromHeaders()
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/auth/login')
-    }
-  }, [user, loading, router])
-
-  // Show loading state while checking auth
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-beige-50 dark:bg-navy-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gold-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Don't render anything if not authenticated (redirect will happen)
-  if (!user) {
-    return null
-  }
-
-  const activeTab = getActiveTab(pathname)
-
-  const handleTabChange = (tab: string) => {
+  async function handleTabChange(tab: string) {
+    'use server'
     switch (tab) {
       case 'home':
-        router.push('/dashboard')
-        break
+        return redirect('/dashboard')
       case 'events':
-        router.push('/events')
-        break
+        return redirect('/events')
       case 'chat':
-        router.push('/chat')
-        break
+        return redirect('/chat')
       case 'fellowships':
-        router.push('/fellowship')
-        break
+        return redirect('/fellowship')
       case 'devotions':
-        router.push('/devotions')
-        break
+        return redirect('/devotions')
       case 'more':
-        router.push('/more')
-        break
+        return redirect('/more')
       default:
         break
     }
   }
+
+  const supabase = createServerComponentClient({ cookies })
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (user && !pathname.startsWith('/onboarding')) {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('onboarding_completed,onboarding_version')
+      .eq('id', user.id)
+      .single()
+
+    const onboardingVersion = profile?.onboarding_version ?? 0
+
+    if (error || !profile) {
+      redirect('/onboarding')
+    }
+
+    if (profile.onboarding_completed !== true || onboardingVersion < 2) {
+      redirect('/onboarding')
+    }
+  }
+
+  const activeTab = getActiveTab(pathname)
 
   return (
     <div className="flex flex-col min-h-screen bg-beige-50 dark:bg-navy-900">
