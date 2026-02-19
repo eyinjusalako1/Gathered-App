@@ -64,7 +64,7 @@ export default async function AppLayout({
 
   if (user && !pathname.startsWith('/onboarding')) {
     const { data: profile, error } = await supabase
-      .from('profiles')
+      .from('user_profiles')
       .select('onboarding_completed,onboarding_version')
       .eq('id', user.id)
       .single()
