@@ -1,56 +1,185 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
-import { saveUserType } from '@/hooks/usePrefs'
-import { BookOpen, Users, Loader2 } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
+import { supabase } from '@/lib/supabase'
+import { ArrowLeft, Loader2, MessageCircle } from 'lucide-react'
+
+type GrowthIntent =
+  | 'I’m doing okay, but I want to grow'
+  | 'I feel spiritually stuck'
+  | 'I’m anxious / overwhelmed'
+  | 'I’m coming back to faith'
+  | 'I’m just exploring'
+
+type GrowthFocus =
+  | 'Peace'
+  | 'Discipline'
+  | 'Identity'
+  | 'Purpose'
+  | 'Relationships'
+  | 'Understanding the Bible'
+
+type ReflectionPreference =
+  | 'Quiet time (just me + God)'
+  | 'With community encouragement'
+  | 'A mix of both'
+
+type EngagementFrequency =
+  | 'Daily (5–10 mins)'
+  | 'A few times a week'
+  | 'Occasionally'
+
+type StepValue = GrowthIntent | GrowthFocus | ReflectionPreference | EngagementFrequency | string
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const { user } = useAuth()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [checkingProfile, setCheckingProfile] = useState(true)
+  const { user, loading: authLoading } = useAuth()
+  const toast = useToast()
 
-  // Onboarding guard: redirect to dashboard if profile is already complete
+  const [step, setStep] = useState(1)
+  const [growthIntent, setGrowthIntent] = useState<GrowthIntent | ''>('')
+  const [growthFocus, setGrowthFocus] = useState<GrowthFocus | ''>('')
+  const [reflectionPreference, setReflectionPreference] = useState<ReflectionPreference | ''>('')
+  const [engagementFrequency, setEngagementFrequency] = useState<EngagementFrequency | ''>('')
+  const [firstName, setFirstName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [showFinal, setShowFinal] = useState(false)
+
   useEffect(() => {
-    const checkProfileComplete = async () => {
-      if (!user?.id) {
-        setCheckingProfile(false)
-        return
-      }
-
-      try {
-        const res = await fetch("/api/profile/get-profile", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ userId: user.id }),
-        })
-
-        if (res.ok) {
-          const json = await res.json()
-          if (json.profile?.profile_complete) {
-            // Profile is already complete, redirect to dashboard
-            router.replace("/dashboard")
-            return
-          }
-        }
-      } catch (err) {
-        // If check fails, allow onboarding to continue
-        console.error("Error checking profile:", err)
-      } finally {
-        setCheckingProfile(false)
-      }
+    if (!authLoading && !user) {
+      router.replace('/auth/login')
     }
+  }, [authLoading, user, router])
 
-    checkProfileComplete()
-  }, [user?.id, router])
+  const steps = useMemo(
+    () => [
+      {
+        prompt: 'Where are you at in your walk right now?',
+        options: [
+          'I’m doing okay, but I want to grow',
+          'I feel spiritually stuck',
+          'I’m anxious / overwhelmed',
+          'I’m coming back to faith',
+          'I’m just exploring',
+        ] as GrowthIntent[],
+      },
+      {
+        prompt: 'What do you want God to grow in you in this season?',
+        options: [
+          'Peace',
+          'Discipline',
+          'Identity',
+          'Purpose',
+          'Relationships',
+          'Understanding the Bible',
+        ] as GrowthFocus[],
+      },
+      {
+        prompt: 'How would you like to grow?',
+        options: [
+          'Quiet time (just me + God)',
+          'With community encouragement',
+          'A mix of both',
+        ] as ReflectionPreference[],
+      },
+      {
+        prompt: 'What rhythm fits your real life right now?',
+        options: [
+          'Daily (5–10 mins)',
+          'A few times a week',
+          'Occasionally',
+        ] as EngagementFrequency[],
+      },
+      {
+        prompt: 'What should we call you?',
+        options: [],
+      },
+    ],
+    []
+  )
 
-  // Show loading while checking profile
-  if (checkingProfile) {
+  const updateProfile = async (partial: Record<string, any>) => {
+    if (!user?.id) {
+      toast({ title: 'You must be logged in to continue', variant: 'error' })
+      return false
+    }
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update(partial)
+        .eq('id', user.id)
+
+      if (error) {
+        throw error
+      }
+      return true
+    } catch (error: any) {
+      toast({
+        title: 'Something went wrong',
+        description: error.message || 'Unable to save your response.',
+        variant: 'error',
+      })
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleNext = async (value: StepValue) => {
+    if (step === 1) {
+      const nextValue = value as GrowthIntent
+      setGrowthIntent(nextValue)
+      const ok = await updateProfile({ growth_intent: nextValue })
+      if (ok) setStep(2)
+      return
+    }
+    if (step === 2) {
+      const nextValue = value as GrowthFocus
+      setGrowthFocus(nextValue)
+      const ok = await updateProfile({ growth_focus: nextValue })
+      if (ok) setStep(3)
+      return
+    }
+    if (step === 3) {
+      const nextValue = value as ReflectionPreference
+      setReflectionPreference(nextValue)
+      const ok = await updateProfile({ reflection_preference: nextValue })
+      if (ok) setStep(4)
+      return
+    }
+    if (step === 4) {
+      const nextValue = value as EngagementFrequency
+      setEngagementFrequency(nextValue)
+      const ok = await updateProfile({ engagement_frequency: nextValue })
+      if (ok) setStep(5)
+      return
+    }
+  }
+
+  const handleSubmitName = async () => {
+    if (!firstName.trim()) {
+      toast({ title: 'First name is required', variant: 'error' })
+      return
+    }
+    const ok = await updateProfile({
+      first_name: firstName.trim(),
+      onboarding_completed: true,
+    })
+    if (ok) {
+      setShowFinal(true)
+    }
+  }
+
+  const goBack = () => {
+    if (step === 1) return
+    setStep((prev) => Math.max(1, prev - 1))
+  }
+
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-beige-50 dark:bg-navy-900">
         <div className="text-center">
@@ -61,93 +190,92 @@ export default function OnboardingPage() {
     )
   }
 
-  const handleSelectRole = async (userType: 'Disciple' | 'Steward') => {
-    if (!user) {
-      setError('You must be logged in to continue')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      // Await saveUserType before redirecting to prevent race condition
-      await saveUserType(user.id, userType)
-      
-      // Redirect to onboarding to complete profile setup
-      // Dashboard will check profile_complete and redirect if needed
-      router.replace('/onboarding/profile')
-    } catch (err: any) {
-      console.error('Error saving user type:', err)
-      const errorMessage = err?.message || 'Unknown error occurred'
-      setError(`Failed to save your selection: ${errorMessage}. Please try again or contact support if the issue persists.`)
-      setLoading(false)
-    }
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-beige-50 dark:bg-navy-900 py-12 px-4">
-      <div className="max-w-2xl w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-navy-900 dark:text-white mb-2">
-            Welcome to Gathered
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Choose your role to get started
-          </p>
+    <div className="min-h-screen bg-navy-900 text-white px-4 py-10">
+      <div className="max-w-md mx-auto space-y-6">
+        <div className="flex items-center justify-between text-sm text-slate-400">
+          <span>{`Step ${Math.min(step, 5)} of 5`}</span>
+          {step > 1 && !showFinal && (
+            <button
+              type="button"
+              onClick={goBack}
+              className="inline-flex items-center gap-1 text-slate-300 hover:text-gold-200 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </button>
+          )}
         </div>
 
-        {error && (
-          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-            <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+        <div className="bg-navy-800/60 border border-white/10 rounded-2xl p-6 shadow-lg transition-all duration-300">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-gold-500/15 flex items-center justify-center">
+              <MessageCircle className="w-5 h-5 text-gold-500" />
+            </div>
+            <div>
+              <p className="text-sm uppercase tracking-wide text-gold-300 mb-2">Gathered</p>
+              <h1 className="text-lg font-semibold text-white">
+                {showFinal ? `You’re in, ${firstName.trim()}` : steps[step - 1].prompt}
+              </h1>
+              {showFinal && (
+                <p className="mt-2 text-sm text-slate-300">
+                  We’ll start you with something that fits where you are.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {!showFinal && step <= 4 && (
+          <div className="space-y-3 animate-[fadeIn_0.3s_ease]">
+            {steps[step - 1].options.map((option) => (
+              <button
+                key={option}
+                type="button"
+                disabled={saving}
+                onClick={() => handleNext(option)}
+                className="w-full rounded-2xl border border-gold-500/30 bg-navy-800/50 px-4 py-4 text-left text-sm font-semibold text-slate-100 hover:border-gold-500 hover:bg-navy-700/60 transition-colors disabled:opacity-60"
+              >
+                {option}
+              </button>
+            ))}
+            {saving && (
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Saving your response...
+              </div>
+            )}
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Disciple Option */}
-          <button
-            onClick={() => handleSelectRole('Disciple')}
-            disabled={loading}
-            className="group relative bg-white dark:bg-navy-800 rounded-2xl p-8 border-2 border-gray-200 dark:border-gray-700 hover:border-gold-500 dark:hover:border-gold-500 transition-all duration-200 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                <BookOpen className="w-8 h-8 text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-navy-900 dark:text-white">
-                Disciple
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400">
-                Join fellowship groups, participate in Bible studies, and grow in your faith journey.
-              </p>
-              {loading && (
-                <Loader2 className="w-5 h-5 animate-spin text-gold-500" />
-              )}
-            </div>
-          </button>
+        {!showFinal && step === 5 && (
+          <div className="space-y-4 animate-[fadeIn_0.3s_ease]">
+            <input
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="First name"
+              className="w-full rounded-2xl border border-white/10 bg-navy-800/60 px-4 py-4 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-gold-500"
+            />
+            <button
+              type="button"
+              onClick={handleSubmitName}
+              disabled={saving}
+              className="w-full rounded-2xl bg-gold-500 px-4 py-4 text-sm font-semibold text-navy-900 hover:bg-gold-600 transition-colors disabled:opacity-60"
+            >
+              {saving ? 'Saving...' : 'Finish'}
+            </button>
+          </div>
+        )}
 
-          {/* Steward Option */}
+        {showFinal && (
           <button
-            onClick={() => handleSelectRole('Steward')}
-            disabled={loading}
-            className="group relative bg-white dark:bg-navy-800 rounded-2xl p-8 border-2 border-gray-200 dark:border-gray-700 hover:border-gold-500 dark:hover:border-gold-500 transition-all duration-200 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            type="button"
+            onClick={() => router.replace('/dashboard')}
+            className="w-full rounded-2xl bg-gold-500 px-4 py-4 text-sm font-semibold text-navy-900 hover:bg-gold-600 transition-colors"
           >
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-gold-500 to-gold-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Users className="w-8 h-8 text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-navy-900 dark:text-white">
-                Steward
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400">
-                Lead fellowship groups, create events, and help build the community.
-              </p>
-              {loading && (
-                <Loader2 className="w-5 h-5 animate-spin text-gold-500" />
-              )}
-            </div>
+            Enter Gathered
           </button>
-        </div>
+        )}
       </div>
     </div>
   )
