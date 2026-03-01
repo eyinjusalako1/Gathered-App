@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import { Heart, Eye, EyeOff, User, Mail, Lock, MapPin, Church } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { Heart, Eye, EyeOff, User, Mail, Lock } from 'lucide-react'
 
 export default function SignUpPage() {
   const router = useRouter()
@@ -18,11 +19,6 @@ export default function SignUpPage() {
     email: '',
     password: '',
     confirmPassword: '',
-    age: '',
-    denomination: '',
-    location: '',
-    church_affiliation: '',
-    bio: '',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,7 +26,7 @@ export default function SignUpPage() {
     setLoading(true)
     setError('')
 
-    if (formData.password !== formData.confirmPassword) {
+    if (formData.confirmPassword && formData.password !== formData.confirmPassword) {
       setError('Passwords do not match')
       setLoading(false)
       return
@@ -44,17 +40,17 @@ export default function SignUpPage() {
 
     const { error } = await signUp(formData.email, formData.password, {
       name: formData.name,
-      age: formData.age ? parseInt(formData.age) : undefined,
-      denomination: formData.denomination || undefined,
-      location: formData.location || undefined,
-      church_affiliation: formData.church_affiliation || undefined,
-      bio: formData.bio || undefined,
     })
 
     if (error) {
       setError(error.message)
     } else {
-      router.push('/auth/verify-email')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        router.replace('/onboarding')
+      } else {
+        setError('Check your email to confirm your account.')
+      }
     }
     
     setLoading(false)
@@ -164,7 +160,7 @@ export default function SignUpPage() {
             {/* Confirm Password */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Confirm Password *
+                Confirm Password (optional)
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -172,111 +168,12 @@ export default function SignUpPage() {
                   id="confirmPassword"
                   name="confirmPassword"
                   type={showPassword ? 'text' : 'password'}
-                  required
                   className="input-field pl-10"
                   placeholder="Confirm your password"
                   value={formData.confirmPassword}
                   onChange={handleChange}
                 />
               </div>
-            </div>
-
-            {/* Age */}
-            <div>
-              <label htmlFor="age" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Age
-              </label>
-              <input
-                id="age"
-                name="age"
-                type="number"
-                min="13"
-                max="120"
-                className="input-field"
-                placeholder="Your age"
-                value={formData.age}
-                onChange={handleChange}
-              />
-            </div>
-
-            {/* Denomination */}
-            <div>
-              <label htmlFor="denomination" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Denomination
-              </label>
-              <select
-                id="denomination"
-                name="denomination"
-                className="input-field"
-                value={formData.denomination}
-                onChange={handleChange}
-              >
-                <option value="">Select denomination (optional)</option>
-                <option value="Baptist">Baptist</option>
-                <option value="Methodist">Methodist</option>
-                <option value="Presbyterian">Presbyterian</option>
-                <option value="Lutheran">Lutheran</option>
-                <option value="Episcopal">Episcopal</option>
-                <option value="Catholic">Catholic</option>
-                <option value="Orthodox">Orthodox</option>
-                <option value="Pentecostal">Pentecostal</option>
-                <option value="Non-denominational">Non-denominational</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            {/* Location */}
-            <div>
-              <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Location
-              </label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  id="location"
-                  name="location"
-                  type="text"
-                  className="input-field pl-10"
-                  placeholder="City, State (optional)"
-                  value={formData.location}
-                  onChange={handleChange}
-                />
-              </div>
-            </div>
-
-            {/* Church Affiliation */}
-            <div>
-              <label htmlFor="church_affiliation" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Church Affiliation
-              </label>
-              <div className="relative">
-                <Church className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  id="church_affiliation"
-                  name="church_affiliation"
-                  type="text"
-                  className="input-field pl-10"
-                  placeholder="Your church name (optional)"
-                  value={formData.church_affiliation}
-                  onChange={handleChange}
-                />
-              </div>
-            </div>
-
-            {/* Bio */}
-            <div>
-              <label htmlFor="bio" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Bio
-              </label>
-              <textarea
-                id="bio"
-                name="bio"
-                rows={3}
-                className="input-field"
-                placeholder="Tell us about yourself (optional)"
-                value={formData.bio}
-                onChange={handleChange}
-              />
             </div>
           </div>
 

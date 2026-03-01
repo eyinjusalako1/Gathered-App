@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
+import { supabase } from '@/lib/supabase'
 import { Heart, Eye, EyeOff, Mail, Lock } from 'lucide-react'
 
 function LoginForm() {
@@ -30,9 +31,26 @@ function LoginForm() {
     if (error) {
       setError(error.message)
     } else {
-      // Redirect to the specified path or dashboard
-      const redirectTo = searchParams.get('redirect_to') || '/dashboard'
-      router.push(redirectTo)
+      const { data: { session } } = await supabase.auth.getSession()
+      const userId = session?.user?.id
+      if (userId) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('onboarding_completed,onboarding_version')
+          .eq('id', userId)
+          .single()
+
+        const onboardingVersion = profile?.onboarding_version ?? 0
+        if (!profile || profile.onboarding_completed !== true || onboardingVersion < 2) {
+          router.replace('/onboarding')
+        } else {
+          const redirectTo = searchParams.get('redirect_to') || '/dashboard'
+          router.push(redirectTo)
+        }
+      } else {
+        const redirectTo = searchParams.get('redirect_to') || '/dashboard'
+        router.push(redirectTo)
+      }
     }
     
     setLoading(false)

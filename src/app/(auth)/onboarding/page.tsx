@@ -111,8 +111,7 @@ export default function OnboardingPage() {
     try {
       const { error } = await supabase
         .from('user_profiles')
-        .update(partial)
-        .eq('id', user.id)
+        .upsert({ id: user.id, ...partial }, { onConflict: 'id' })
 
       if (error) {
         throw error
