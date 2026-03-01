@@ -47,6 +47,7 @@ export default function OnboardingPage() {
   const [firstName, setFirstName] = useState('')
   const [saving, setSaving] = useState(false)
   const [showFinal, setShowFinal] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -161,17 +162,51 @@ export default function OnboardingPage() {
   }
 
   const handleSubmitName = async () => {
-    if (!firstName.trim()) {
+    if (isSubmitting) return
+
+    const name = firstName.trim()
+    if (!name) {
       toast({ title: 'First name is required', variant: 'error' })
       return
     }
-    const ok = await updateProfile({
-      first_name: firstName.trim(),
-      onboarding_completed: true,
-      onboarding_version: 2,
-    })
-    if (ok) {
+
+    if (!user?.id) {
+      toast({ title: 'Session expired — please log in again.', variant: 'error' })
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const ok = await updateProfile({
+        first_name: name,
+        onboarding_completed: true,
+        onboarding_version: 2,
+        growth_intent: growthIntent || null,
+        growth_focus: growthFocus || null,
+        reflection_preference: reflectionPreference || null,
+        engagement_frequency: engagementFrequency || null,
+      })
+
+      if (!ok) return
+
+      // IMPORTANT: verify against the SAME table you update
+      const { data: verify, error: verifyError } = await supabase
+        .from('profiles') // <-- changed from 'user_profiles'
+        .select('onboarding_completed,onboarding_version')
+        .eq('id', user.id)
+        .single()
+
+      const verifiedVersion = verify?.onboarding_version ?? 0
+      if (verifyError || !verify || verify.onboarding_completed !== true || verifiedVersion < 2) {
+        toast({ title: 'Save didn’t complete—please try again.', variant: 'error' })
+        return
+      }
+
       setShowFinal(true)
+    } catch (error: any) {
+      toast({ title: 'Save didn’t complete—please try again.', variant: 'error' })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -283,10 +318,10 @@ export default function OnboardingPage() {
             <button
               type="button"
               onClick={handleSubmitName}
-              disabled={saving}
+              disabled={saving || isSubmitting}
               className="w-full rounded-2xl bg-gold-500 px-4 py-4 text-sm font-semibold text-navy-900 hover:bg-gold-600 transition-colors disabled:opacity-60"
             >
-              {saving ? 'Saving...' : 'Finish'}
+              {saving || isSubmitting ? 'Saving...' : 'Finish'}
             </button>
           </div>
         )}
@@ -295,7 +330,8 @@ export default function OnboardingPage() {
           <button
             type="button"
             onClick={() => router.replace('/dashboard')}
-            className="w-full rounded-2xl bg-gold-500 px-4 py-4 text-sm font-semibold text-navy-900 hover:bg-gold-600 transition-colors"
+            disabled={isSubmitting}
+            className="w-full rounded-2xl bg-gold-500 px-4 py-4 text-sm font-semibold text-navy-900 hover:bg-gold-600 transition-colors disabled:opacity-60"
           >
             Enter Gathered
           </button>
