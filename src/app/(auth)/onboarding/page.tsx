@@ -110,7 +110,7 @@ export default function OnboardingPage() {
     setSaving(true)
     try {
       const { error } = await supabase
-        .from('user_profiles')
+        .from('profiles')
         .upsert({ id: user.id, ...partial }, { onConflict: 'id' })
 
       if (error) {
@@ -193,11 +193,12 @@ export default function OnboardingPage() {
         .from('profiles') // <-- changed from 'user_profiles'
         .select('onboarding_completed,onboarding_version')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
 
       const verifiedVersion = verify?.onboarding_version ?? 0
       if (verifyError || !verify || verify.onboarding_completed !== true || verifiedVersion < 2) {
         toast({ title: 'Save didn’t complete—please try again.', variant: 'error' })
+        setIsSubmitting(false)
         return
       }
 
