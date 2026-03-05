@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { FellowshipService } from '@/lib/fellowship-service'
 import { FellowshipGroup } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { getDailyWord } from '@/lib/dailyWord'
 import { 
   BookOpen, 
   TrendingUp, 
@@ -80,18 +81,6 @@ and I shall dwell in the house of the LORD
   }
 ]
 
-type DailyWalkEntry = {
-  reflection?: string
-  prayer?: string
-}
-
-const dailyWalk: DailyWalkEntry[] = [
-  {
-    reflection: '',
-    prayer: ''
-  }
-]
-
 const VERSE_OF_THE_DAY = {
   verse: 'John 3:16',
   text: 'For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.'
@@ -100,11 +89,10 @@ const VERSE_OF_THE_DAY = {
 export default function DevotionsPage() {
   const router = useRouter()
   const { user } = useAuth()
-  const { isSteward } = useUserProfile()
+  const { isSteward, profile } = useUserProfile()
   const toast = useToast()
-  
-  const todayIndex = new Date().getDate() % dailyWalk.length
-  const todayWalk = dailyWalk[todayIndex]
+
+  const dailyWord = getDailyWord(profile?.growth_focus)
 
   const [todayReading, setTodayReading] = useState<Reading>(mockReadings[0])
   const [userGroups, setUserGroups] = useState<FellowshipGroup[]>([])
@@ -333,7 +321,7 @@ export default function DevotionsPage() {
     setSharing(true)
     try {
       // Build formatted message
-      let message = `📖 Today's Reading: ${todayReading.verse}\n`
+      let message = `📖 Today's Reading: ${dailyWord.reference}\n`
       
       if (reflection.trim()) {
         message += `Reflection: ${reflection.trim()}\n`
@@ -355,7 +343,7 @@ export default function DevotionsPage() {
           content: message,
           type: 'devotion_share',
           metadata: {
-            passageRef: todayReading.verse,
+            passageRef: dailyWord.reference,
             reflection: reflection.trim() || undefined,
           },
         }),
@@ -443,7 +431,7 @@ export default function DevotionsPage() {
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-slate-50">Today&apos;s Word for You</h2>
-                <p className="text-sm text-slate-400">{todayReading.verse}</p>
+                <p className="text-sm text-slate-400">{dailyWord.reference}</p>
               </div>
             </div>
             {todayReading.isCompleted ? (
@@ -458,9 +446,9 @@ export default function DevotionsPage() {
             )}
           </div>
           
-          <h3 className="text-xl font-bold text-slate-50 mb-3">{todayReading.title}</h3>
+          <h3 className="text-xl font-bold text-slate-50 mb-3">{dailyWord.title}</h3>
           <p className="text-slate-300 leading-relaxed mb-4 line-clamp-3">
-            {todayReading.content}
+            {dailyWord.text}
           </p>
           
           <div className="flex items-center space-x-3 mb-4">
@@ -488,17 +476,15 @@ export default function DevotionsPage() {
           <div className="mt-6 space-y-4">
             <div className="bg-navy-900/50 rounded-lg p-4 border border-gold-500/20">
               <h4 className="text-sm font-semibold text-gold-200 mb-2">💭 Reflection</h4>
-              <p className="text-sm text-slate-200 leading-relaxed">
-                {todayWalk?.reflection?.trim() ||
-                  'Pause and consider what this passage reveals about God and how it applies to your life today.'}
+              <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-line">
+                {dailyWord.reflection}
               </p>
             </div>
 
             <div className="bg-navy-900/50 rounded-lg p-4 border border-gold-500/20">
               <h4 className="text-sm font-semibold text-gold-200 mb-2">🙏 Prayer</h4>
-              <p className="text-sm text-slate-200 leading-relaxed">
-                {todayWalk?.prayer?.trim() ||
-                  'Ask God to speak clearly and to strengthen you to live out His Word today.'}
+              <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-line">
+                {dailyWord.prayer}
               </p>
             </div>
 
@@ -597,7 +583,7 @@ export default function DevotionsPage() {
                 </label>
                 <div className="bg-navy-900/50 rounded-lg p-4 border border-white/5">
                   <p className="text-slate-200 text-sm whitespace-pre-wrap">
-                    📖 Today&apos;s Reading: {todayReading.verse}
+                    📖 Today&apos;s Reading: {dailyWord.reference}
                     {reflection.trim() && `\nReflection: ${reflection.trim()}`}
                     {'\n'}Let&apos;s discuss this together on Gathered 🙌
                   </p>
