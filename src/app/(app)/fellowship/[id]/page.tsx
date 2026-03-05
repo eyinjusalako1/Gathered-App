@@ -876,16 +876,16 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
               <div className="text-center py-6">
                 <MessageCircle className="w-12 h-12 text-gold-500/60 mx-auto mb-3" />
                 <p className="text-sm font-semibold text-slate-200 mb-2">
-                  Group chats are launching soon
+                  Group chats
                 </p>
                 <p className="text-xs text-slate-400 mb-4">
-                  You&apos;ll be able to chat with your group members. For now, you can still explore and RSVP to hangouts.
+                  Stay connected with your group throughout the week. Share reflections, prayer requests, and encouragement.
                 </p>
                 <button
                   onClick={() => router.push(`/chat/${groupId}`)}
                   className="inline-flex items-center gap-2 rounded-full border border-gold-600/40 text-gold-500 px-4 py-2 text-sm font-medium hover:bg-gold-500/10 transition-colors"
                 >
-                  Go to chats
+                  Open chats
                 </button>
               </div>
             ) : (
