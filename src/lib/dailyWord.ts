@@ -4,6 +4,8 @@ export interface DailyWordEntry {
   text: string
   reflection: string
   prayer: string
+  reflectionPrompt: string
+  reflectionHelper: string
 }
 
 const versePools: Record<string, DailyWordEntry[]> = {
@@ -268,7 +270,29 @@ export function getDailyWord(growthFocus?: string | null): DailyWordEntry {
   const normalized = (growthFocus || '').trim().toLowerCase()
   const mapped = focusAliases[normalized] || 'peace'
   const pool = versePools[mapped] || versePools.peace
+  const reflectionPromptByFocus: Record<string, string> = {
+    peace: 'What is God inviting you to release today?',
+    discipline: 'What step of obedience is God asking of you today?',
+    identity: 'What does this passage reveal about who you are in Christ?',
+    purpose: 'Where might God be directing your steps today?',
+    relationships: 'Is there someone God is inviting you to love, forgive, or encourage today?',
+    bible: 'What is God revealing about His truth through this passage today?',
+  }
+  const reflectionHelperByFocus: Record<string, string> = {
+    peace: 'Take a quiet moment with God',
+    discipline: 'Respond honestly and practically',
+    identity: 'Let this shape how you see yourself',
+    purpose: 'Pay attention to where God is leading',
+    relationships: 'Reflect prayerfully on your connections',
+    bible: 'Sit with what this passage reveals',
+  }
+  const reflectionPrompt = reflectionPromptByFocus[mapped] || reflectionPromptByFocus.peace
+  const reflectionHelper = reflectionHelperByFocus[mapped] || reflectionHelperByFocus.peace
   const dateKey = getDateKey()
   const index = hashString(`${mapped}-${dateKey}`) % pool.length
-  return pool[index]
+  return {
+    ...pool[index],
+    reflectionPrompt,
+    reflectionHelper,
+  }
 }

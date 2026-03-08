@@ -137,6 +137,7 @@ export default function ProfilePage() {
         city: profileData.location || null,
         interests: profileData.interests && profileData.interests.length > 0 ? profileData.interests : null,
         availability: profileData.availability && profileData.availability.length > 0 ? profileData.availability : null,
+        growth_focus: profileData.growthFocus || null,
         avatar_url: avatarUrl || null,
         cover_image_url: coverImageUrl || null,
       })
@@ -184,6 +185,7 @@ export default function ProfilePage() {
     bio: profile?.bio || '',
     location: profile?.city || user?.user_metadata?.location || '',
     denomination: user?.user_metadata?.church_affiliation || '',
+    growthFocus: profile?.growth_focus || '',
     interests: profile?.interests || [],
     availability: profile?.availability || [],
     avatarUrl: profile?.avatar_url || '',

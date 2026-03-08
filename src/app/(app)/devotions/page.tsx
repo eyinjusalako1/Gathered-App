@@ -492,11 +492,12 @@ export default function DevotionsPage() {
               <label htmlFor="daily-walk-reflection" className="text-sm font-semibold text-gold-200">
                 ✍️ Your reflection
               </label>
+              <p className="text-xs text-slate-400">{dailyWord.reflectionHelper}</p>
               <textarea
                 id="daily-walk-reflection"
                 value={reflection}
                 onChange={(e) => handleReflectionChange(e.target.value)}
-                placeholder="What is God showing you through this today?"
+                placeholder={dailyWord.reflectionPrompt}
                 className="w-full px-4 py-3 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 resize-none"
                 rows={4}
               />

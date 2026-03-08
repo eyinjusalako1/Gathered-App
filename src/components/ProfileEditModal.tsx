@@ -32,6 +32,7 @@ export default function ProfileEditModal({
     bio: currentProfile?.bio || '',
     location: currentProfile?.location || '',
     denomination: currentProfile?.denomination || '',
+    growthFocus: currentProfile?.growthFocus || '',
     interests: currentProfile?.interests || [],
     availability: currentProfile?.availability || [],
     avatarUrl: currentProfile?.avatarUrl || '',
@@ -51,6 +52,7 @@ export default function ProfileEditModal({
         bio: currentProfile?.bio || '',
         location: currentProfile?.location || '',
         denomination: currentProfile?.denomination || '',
+        growthFocus: currentProfile?.growthFocus || '',
         interests: currentProfile?.interests || [],
         availability: currentProfile?.availability || [],
         avatarUrl: currentProfile?.avatarUrl || '',
@@ -342,6 +344,28 @@ export default function ProfileEditModal({
             <option value="Episcopal" className="bg-[#0F1433] text-white">Episcopal</option>
             <option value="Pentecostal" className="bg-[#0F1433] text-white">Pentecostal</option>
             <option value="Other" className="bg-[#0F1433] text-white">Other</option>
+          </select>
+        </div>
+
+        {/* Growth Focus */}
+        <div>
+          <label className="block text-sm font-medium text-white mb-2">
+            <BookOpen className="w-4 h-4 inline mr-2" />
+            Growth Focus
+          </label>
+          <select
+            value={formData.growthFocus}
+            onChange={(e) => handleInputChange('growthFocus', e.target.value)}
+            className="w-full bg-white/10 border border-[#D4AF37]/30 rounded-lg px-3 py-2 text-white placeholder-white/60 focus:outline-none focus:border-[#F5C451] min-h-[44px] [&>option]:bg-[#0F1433] [&>option]:text-white"
+            style={{ color: formData.growthFocus ? '#ffffff' : 'rgba(255, 255, 255, 0.6)' }}
+          >
+            <option value="" className="bg-[#0F1433] text-white/60">Select focus</option>
+            <option value="peace" className="bg-[#0F1433] text-white">Peace</option>
+            <option value="discipline" className="bg-[#0F1433] text-white">Discipline</option>
+            <option value="identity" className="bg-[#0F1433] text-white">Identity</option>
+            <option value="purpose" className="bg-[#0F1433] text-white">Purpose</option>
+            <option value="relationships" className="bg-[#0F1433] text-white">Relationships</option>
+            <option value="bible" className="bg-[#0F1433] text-white">Understanding the Bible</option>
           </select>
         </div>
 

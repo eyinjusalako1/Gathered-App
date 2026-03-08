@@ -4,6 +4,7 @@ import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/lib/auth-context'
 import { ToastProvider } from '@/components/ui/Toast'
+import OnboardingGuard from '@/components/OnboardingGuard'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -29,6 +30,7 @@ export default function RootLayout({
         >
           <AuthProvider>
             <ToastProvider>
+              <OnboardingGuard />
               <div className="min-h-screen bg-beige-50 dark:bg-navy-900">
                 <main>
                   {children}
