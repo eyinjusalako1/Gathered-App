@@ -39,6 +39,7 @@ export type UserProfile = {
     suggestions?: boolean
   } | null
   profile_complete?: boolean | null
+  growth_focus?: string | null
   onboarding_completed?: boolean | null
   onboarding_version?: number | null
   discoverable?: boolean | null

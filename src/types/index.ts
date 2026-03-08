@@ -8,6 +8,7 @@ export interface UserProfile {
   location?: string
   bio?: string
   church_affiliation?: string
+  growth_focus?: string
   created_at: string
   updated_at: string
 }
