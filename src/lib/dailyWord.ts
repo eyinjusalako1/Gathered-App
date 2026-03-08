@@ -8,7 +8,9 @@ export interface DailyWordEntry {
   reflectionHelper: string
 }
 
-const versePools: Record<string, DailyWordEntry[]> = {
+type BaseDailyWordEntry = Omit<DailyWordEntry, 'reflectionPrompt' | 'reflectionHelper'>
+
+const versePools: Record<string, BaseDailyWordEntry[]> = {
   peace: [
     {
       title: 'The Lord Is My Shepherd',
