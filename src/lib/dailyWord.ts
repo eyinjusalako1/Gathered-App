@@ -10,7 +10,10 @@ export interface DailyWordEntry {
   focusLabel: string
 }
 
-type BaseDailyWordEntry = Omit<DailyWordEntry, 'reflectionPrompt' | 'reflectionHelper'>
+type BaseDailyWordEntry = Omit<
+  DailyWordEntry,
+  'reflectionPrompt' | 'reflectionHelper' | 'focus' | 'focusLabel'
+>
 
 const versePools: Record<string, BaseDailyWordEntry[]> = {
   peace: [
