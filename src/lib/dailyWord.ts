@@ -6,6 +6,8 @@ export interface DailyWordEntry {
   prayer: string
   reflectionPrompt: string
   reflectionHelper: string
+  focus: string
+  focusLabel: string
 }
 
 type BaseDailyWordEntry = Omit<DailyWordEntry, 'reflectionPrompt' | 'reflectionHelper'>
@@ -290,11 +292,22 @@ export function getDailyWord(growthFocus?: string | null): DailyWordEntry {
   }
   const reflectionPrompt = reflectionPromptByFocus[mapped] || reflectionPromptByFocus.peace
   const reflectionHelper = reflectionHelperByFocus[mapped] || reflectionHelperByFocus.peace
+  const focusLabelByFocus: Record<string, string> = {
+    peace: 'Peace',
+    discipline: 'Discipline',
+    identity: 'Identity',
+    purpose: 'Purpose',
+    relationships: 'Relationships',
+    bible: 'Bible',
+  }
+  const focusLabel = focusLabelByFocus[mapped] || focusLabelByFocus.peace
   const dateKey = getDateKey()
   const index = hashString(`${mapped}-${dateKey}`) % pool.length
   return {
     ...pool[index],
     reflectionPrompt,
     reflectionHelper,
+    focus: mapped,
+    focusLabel,
   }
 }

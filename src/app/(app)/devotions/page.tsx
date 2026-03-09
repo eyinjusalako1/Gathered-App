@@ -434,6 +434,11 @@ export default function DevotionsPage() {
                 <p className="text-sm text-slate-400">{dailyWord.reference}</p>
               </div>
             </div>
+            <div className="hidden sm:block">
+              <span className="inline-flex items-center rounded-full border border-gold-500/40 bg-gold-500/10 px-3 py-1 text-xs font-semibold text-gold-200">
+                {dailyWord.focusLabel}
+              </span>
+            </div>
             {todayReading.isCompleted ? (
               <div className="bg-gold-500/15 text-gold-500 border border-gold-600/30 px-3 py-1 rounded-full text-xs font-semibold">
                 Completed ✓
@@ -446,7 +451,12 @@ export default function DevotionsPage() {
             )}
           </div>
           
-          <h3 className="text-xl font-bold text-slate-50 mb-3">{dailyWord.title}</h3>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <h3 className="text-xl font-bold text-slate-50">{dailyWord.title}</h3>
+            <span className="inline-flex items-center rounded-full border border-gold-500/40 bg-gold-500/10 px-3 py-1 text-xs font-semibold text-gold-200 sm:hidden">
+              {dailyWord.focusLabel}
+            </span>
+          </div>
           <p className="text-slate-300 leading-relaxed mb-4 line-clamp-3">
             {dailyWord.text}
           </p>
