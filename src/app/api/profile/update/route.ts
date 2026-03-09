@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     if (profileData.role !== undefined) updatePayload.role = profileData.role || null; // Handle role switching
     if (profileData.my_church_id !== undefined) updatePayload.my_church_id = profileData.my_church_id || null;
     if (profileData.discoverable !== undefined) updatePayload.discoverable = profileData.discoverable;
+    if (profileData.growth_focus !== undefined) updatePayload.growth_focus = profileData.growth_focus || null;
     // Note: denomination is stored in auth.users.user_metadata, not user_profiles
     // We'll need to update it separately if needed
 

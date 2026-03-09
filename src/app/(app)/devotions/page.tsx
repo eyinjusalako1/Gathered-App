@@ -537,27 +537,23 @@ export default function DevotionsPage() {
               {/* Full Passage */}
               <div className="bg-navy-900/50 rounded-lg p-4 border border-white/5">
                 <p className="text-slate-200 leading-relaxed whitespace-pre-line">
-                  {todayReading.fullContent}
+                  {dailyWord.text}
                 </p>
               </div>
               
-              {/* Reflection Prompts */}
-              {todayReading.reflectionPrompts && todayReading.reflectionPrompts.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center space-x-2">
-                    <MessageCircle className="w-4 h-4" />
-                    <span>Reflection Questions</span>
-                  </h4>
-                  <ul className="space-y-2 mb-4">
-                    {todayReading.reflectionPrompts.map((prompt, idx) => (
-                      <li key={idx} className="text-slate-300 text-sm pl-6 relative">
-                        <span className="absolute left-0 text-gold-500">•</span>
-                        {prompt}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {/* Reflection Prompt */}
+              <div>
+                <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center space-x-2">
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Reflection Prompt</span>
+                </h4>
+                <ul className="space-y-2 mb-4">
+                  <li className="text-slate-300 text-sm pl-6 relative">
+                    <span className="absolute left-0 text-gold-500">•</span>
+                    {dailyWord.reflectionPrompt}
+                  </li>
+                </ul>
+              </div>
               
             </div>
           )}
