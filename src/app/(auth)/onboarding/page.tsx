@@ -110,7 +110,7 @@ export default function OnboardingPage() {
     setSaving(true)
     try {
       const { error } = await supabase
-        .from('profiles')
+        .from('user_profiles')
         .upsert({ id: user.id, ...partial }, { onConflict: 'id' })
 
       if (error) {
@@ -190,7 +190,7 @@ export default function OnboardingPage() {
 
       // IMPORTANT: verify against the SAME table you update
       const { data: verify, error: verifyError } = await supabase
-        .from('profiles') // <-- changed from 'user_profiles'
+        .from('user_profiles')
         .select('onboarding_completed,onboarding_version')
         .eq('id', user.id)
         .maybeSingle()
