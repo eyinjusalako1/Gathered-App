@@ -257,11 +257,12 @@ const focusAliases: Record<string, string> = {
   'understanding the bible': 'bible',
 }
 
-function getDateKey(): string {
-  const today = new Date()
-  const dd = String(today.getDate()).padStart(2, '0')
-  const mm = String(today.getMonth() + 1).padStart(2, '0')
-  const yyyy = today.getFullYear()
+function getDateKey(dayOffset = 0): string {
+  const targetDate = new Date()
+  targetDate.setDate(targetDate.getDate() + dayOffset)
+  const dd = String(targetDate.getDate()).padStart(2, '0')
+  const mm = String(targetDate.getMonth() + 1).padStart(2, '0')
+  const yyyy = targetDate.getFullYear()
   return `${dd}-${mm}-${yyyy}`
 }
 
@@ -273,7 +274,7 @@ function hashString(input: string): number {
   return hash
 }
 
-export function getDailyWord(growthFocus?: string | null): DailyWordEntry {
+export function getDailyWord(growthFocus?: string | null, dayOffset = 0): DailyWordEntry {
   const normalized = (growthFocus || '').trim().toLowerCase()
   const mapped = focusAliases[normalized] || 'peace'
   const pool = versePools[mapped] || versePools.peace
@@ -304,7 +305,7 @@ export function getDailyWord(growthFocus?: string | null): DailyWordEntry {
     bible: 'Bible',
   }
   const focusLabel = focusLabelByFocus[mapped] || focusLabelByFocus.peace
-  const dateKey = getDateKey()
+  const dateKey = getDateKey(dayOffset)
   const index = hashString(`${mapped}-${dateKey}`) % pool.length
   return {
     ...pool[index],

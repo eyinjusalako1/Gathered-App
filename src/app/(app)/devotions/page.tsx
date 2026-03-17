@@ -44,6 +44,34 @@ const STORAGE_KEYS = {
   SAVED_VERSES: 'devotions_saved_verses'
 }
 
+const DEVOTION_COMPLETION_PREFIX = 'gathered_devotion_completed_'
+
+const getReflectionDateKey = (dayOffset = 0) => {
+  const date = new Date()
+  date.setDate(date.getDate() + dayOffset)
+  const dd = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const yyyy = date.getFullYear()
+  return `${dd}-${mm}-${yyyy}`
+}
+
+const getCompletionDateKey = (dayOffset = 0) => {
+  const date = new Date()
+  date.setDate(date.getDate() + dayOffset)
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const getCompletionStorageKey = (dateKey: string) => `${DEVOTION_COMPLETION_PREFIX}${dateKey}`
+
+const getCompletionMessage = (streak: number) => {
+  if (streak <= 1) return 'You started a rhythm today.'
+  if (streak <= 4) return `Day ${streak} of consistency.`
+  return "You're building a strong rhythm."
+}
+
 // Mock data
 const mockReadings: Reading[] = [
   {
@@ -93,6 +121,7 @@ export default function DevotionsPage() {
   const toast = useToast()
 
   const dailyWord = getDailyWord(profile?.growth_focus)
+  const yesterdayWord = getDailyWord(profile?.growth_focus, -1)
 
   const [todayReading, setTodayReading] = useState<Reading>(mockReadings[0])
   const [userGroups, setUserGroups] = useState<FellowshipGroup[]>([])
@@ -101,7 +130,7 @@ export default function DevotionsPage() {
   // State for stats (loaded from localStorage)
   const [streak, setStreak] = useState(0)
   const [totalReadings, setTotalReadings] = useState(0)
-  const [lastCompletedDate, setLastCompletedDate] = useState<string | null>(null)
+  const [completionMessage, setCompletionMessage] = useState('')
   
   // State for expandable sections
   const [isPassageExpanded, setIsPassageExpanded] = useState(false)
@@ -112,15 +141,12 @@ export default function DevotionsPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
   const [sharing, setSharing] = useState(false)
   
-  const getTodayKey = () => {
-    const today = new Date()
-    const dd = String(today.getDate()).padStart(2, '0')
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    const yyyy = today.getFullYear()
-    return `${dd}-${mm}-${yyyy}`
-  }
-
-  const todayKey = React.useMemo(() => getTodayKey(), [])
+  const todayKey = React.useMemo(() => getReflectionDateKey(), [])
+  const todayCompletionKey = React.useMemo(() => getCompletionDateKey(), [])
+  const completionStorageKey = React.useMemo(
+    () => getCompletionStorageKey(todayCompletionKey),
+    [todayCompletionKey]
+  )
   const reflectionStorageKey = React.useMemo(() => {
     if (user?.id) {
       return `gathered_reflection_${user.id}_${todayKey}`
@@ -133,24 +159,43 @@ export default function DevotionsPage() {
     window.localStorage.removeItem(reflectionStorageKey)
   }, [reflectionStorageKey])
 
+  const syncCompletionState = React.useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const completionKeys = Object.keys(window.localStorage).filter((key) =>
+      key.startsWith(DEVOTION_COMPLETION_PREFIX) && window.localStorage.getItem(key) === 'true'
+    )
+
+    let calculatedStreak = 0
+    while (
+      window.localStorage.getItem(getCompletionStorageKey(getCompletionDateKey(-calculatedStreak))) === 'true'
+    ) {
+      calculatedStreak += 1
+    }
+
+    const isCompletedToday = window.localStorage.getItem(completionStorageKey) === 'true'
+
+    setStreak(calculatedStreak)
+    setTotalReadings(completionKeys.length)
+    setTodayReading((prev) => ({ ...prev, isCompleted: isCompletedToday }))
+    setCompletionMessage(isCompletedToday ? getCompletionMessage(calculatedStreak) : '')
+
+    window.localStorage.setItem(STORAGE_KEYS.STREAK, String(calculatedStreak))
+    window.localStorage.setItem(STORAGE_KEYS.TOTAL_READINGS, String(completionKeys.length))
+    window.localStorage.setItem(STORAGE_KEYS.LAST_COMPLETED, isCompletedToday ? todayCompletionKey : '')
+
+    return {
+      calculatedStreak,
+      totalReadingsCount: completionKeys.length,
+      isCompletedToday,
+    }
+  }, [completionStorageKey, todayCompletionKey])
+
   // Load stats from localStorage on mount
   useEffect(() => {
     if (typeof window === 'undefined') return
-
-    const savedStreak = localStorage.getItem(STORAGE_KEYS.STREAK)
-    const savedTotal = localStorage.getItem(STORAGE_KEYS.TOTAL_READINGS)
-    const savedLastCompleted = localStorage.getItem(STORAGE_KEYS.LAST_COMPLETED)
-    
-    if (savedStreak) setStreak(parseInt(savedStreak, 10))
-    if (savedTotal) setTotalReadings(parseInt(savedTotal, 10))
-    if (savedLastCompleted) setLastCompletedDate(savedLastCompleted)
-    
-    // Check if today's reading is already completed
-    const todayIso = new Date().toISOString().split('T')[0]
-    if (savedLastCompleted === todayIso) {
-      setTodayReading(prev => ({ ...prev, isCompleted: true }))
-    }
-  }, [])
+    syncCompletionState()
+  }, [syncCompletionState])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -202,10 +247,11 @@ export default function DevotionsPage() {
   
   const handleMarkComplete = () => {
     clearReflectionStorage()
-    const today = new Date().toISOString().split('T')[0]
+    const alreadyCompleted =
+      todayReading.isCompleted || localStorage.getItem(completionStorageKey) === 'true'
     
     // Prevent double-completing on same day
-    if (lastCompletedDate === today || todayReading.isCompleted) {
+    if (alreadyCompleted) {
       toast({
         title: 'Already completed',
         description: 'You\'ve already completed today\'s reading.',
@@ -216,33 +262,12 @@ export default function DevotionsPage() {
     }
     
     // Update completion status
-    setTodayReading(prev => ({ ...prev, isCompleted: true }))
-    setLastCompletedDate(today)
-    localStorage.setItem(STORAGE_KEYS.LAST_COMPLETED, today)
-    
-    // Update streak
-    let newStreak = streak
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-    
-    if (lastCompletedDate === yesterday) {
-      // Continue streak
-      newStreak = streak + 1
-    } else if (lastCompletedDate !== today) {
-      // New streak (gap was more than 1 day)
-      newStreak = 1
-    }
-    
-    setStreak(newStreak)
-    localStorage.setItem(STORAGE_KEYS.STREAK, newStreak.toString())
-    
-    // Update total readings
-    const newTotal = totalReadings + 1
-    setTotalReadings(newTotal)
-    localStorage.setItem(STORAGE_KEYS.TOTAL_READINGS, newTotal.toString())
+    localStorage.setItem(completionStorageKey, 'true')
+    const completionStats = syncCompletionState()
     
     toast({
       title: 'Reading completed!',
-      description: `Your streak is now ${newStreak} days. Keep it up!`,
+      description: getCompletionMessage(completionStats?.calculatedStreak ?? 1),
       variant: 'success',
       duration: 3000,
     })
@@ -439,16 +464,21 @@ export default function DevotionsPage() {
                 {dailyWord.focusLabel}
               </span>
             </div>
-            {todayReading.isCompleted ? (
-              <div className="bg-gold-500/15 text-gold-500 border border-gold-600/30 px-3 py-1 rounded-full text-xs font-semibold">
-                Completed ✓
-              </div>
-            ) : (
-              <div className="bg-navy-700/50 text-slate-300 border border-white/10 px-3 py-1 rounded-full text-xs font-semibold flex items-center space-x-1">
-                <Clock className="w-3 h-3" />
-                <span>Pending</span>
-              </div>
-            )}
+            <div className="text-right">
+              {todayReading.isCompleted ? (
+                <div className="bg-gold-500/15 text-gold-500 border border-gold-600/30 px-3 py-1 rounded-full text-xs font-semibold">
+                  Completed ✓
+                </div>
+              ) : (
+                <div className="bg-navy-700/50 text-slate-300 border border-white/10 px-3 py-1 rounded-full text-xs font-semibold flex items-center space-x-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Pending</span>
+                </div>
+              )}
+              {todayReading.isCompleted && completionMessage ? (
+                <p className="mt-2 text-xs text-slate-400">{completionMessage}</p>
+              ) : null}
+            </div>
           </div>
           
           <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -473,14 +503,13 @@ export default function DevotionsPage() {
                 <ChevronDown className="w-4 h-4" />
               )}
             </button>
-            {!todayReading.isCompleted && (
-              <button
-                onClick={handleMarkComplete}
-                className="border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 px-4 py-2 rounded-lg font-medium transition-colors"
-              >
-                Mark complete
-              </button>
-            )}
+            <button
+              onClick={handleMarkComplete}
+              disabled={todayReading.isCompleted}
+              className="border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+              {todayReading.isCompleted ? 'Completed today' : 'Mark complete'}
+            </button>
           </div>
 
           <div className="mt-6 space-y-4">
@@ -557,6 +586,20 @@ export default function DevotionsPage() {
               
             </div>
           )}
+        </div>
+
+        <div className="mb-8 bg-navy-800/20 border border-white/10 rounded-xl p-5">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">Yesterday&apos;s Word</h3>
+              <p className="text-xs text-slate-400">{yesterdayWord.reference}</p>
+            </div>
+            <span className="inline-flex items-center rounded-full border border-gold-500/30 bg-gold-500/5 px-2.5 py-1 text-[11px] font-medium text-gold-200">
+              {yesterdayWord.focusLabel}
+            </span>
+          </div>
+          <h4 className="text-base font-semibold text-slate-50 mb-2">{yesterdayWord.title}</h4>
+          <p className="text-sm text-slate-300 line-clamp-2">{yesterdayWord.text}</p>
         </div>
         
         {/* Share Modal */}
