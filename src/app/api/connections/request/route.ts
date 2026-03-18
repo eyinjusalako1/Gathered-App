@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     // Check if connection already exists (in either direction)
     const { data: existingConnections } = await supabaseServer
       .from("user_connections")
-      .select("id, status")
+      .select("id, requester_id, recipient_id, status")
       .or(`requester_id.eq.${userId},recipient_id.eq.${userId}`);
     
     const existingConnection = existingConnections?.find(

@@ -329,7 +329,7 @@ export default function OnboardingPage() {
         {showFinal && (
           <button
             type="button"
-            onClick={() => router.replace('/dashboard')}
+            onClick={() => router.replace('/welcome')}
             disabled={isSubmitting}
             className="w-full rounded-2xl bg-gold-500 px-4 py-4 text-sm font-semibold text-navy-900 hover:bg-gold-600 transition-colors disabled:opacity-60"
           >

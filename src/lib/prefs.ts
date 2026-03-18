@@ -27,6 +27,7 @@ export type UserProfile = {
   created_at?: string | null
   updated_at?: string | null
   preferred_fellowship_id?: string | null
+  my_church_id?: string | null
   last_activity_at?: string | null
   accessibility?: {
     reduceMotion?: boolean
