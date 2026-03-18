@@ -8,6 +8,7 @@ import { useTheme } from 'next-themes'
 import { ArrowLeft, Bell, User, Shield, Moon, Globe, LogOut, Crown, Users, Sun, RotateCcw } from 'lucide-react'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useToast } from '@/components/ui/Toast'
+import { supabase } from '@/lib/supabase'
 import type { Role } from '@/lib/prefs'
 
 function isValidRole(value: string | null | undefined): value is Role {
@@ -135,10 +136,19 @@ export default function SettingsPage() {
     setIsRestartingOnboarding(true)
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session?.access_token) {
+        throw new Error('Your session expired. Please log in again.')
+      }
+
       const response = await fetch('/api/dev/restart-onboarding', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
         },
       })
 
