@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth-context'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
-import { ArrowLeft, Bell, User, Shield, Moon, Globe, LogOut, Crown, Users, Sun } from 'lucide-react'
+import { ArrowLeft, Bell, User, Shield, Moon, Globe, LogOut, Crown, Users, Sun, RotateCcw } from 'lucide-react'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useToast } from '@/components/ui/Toast'
 import type { Role } from '@/lib/prefs'
@@ -21,6 +21,7 @@ export default function SettingsPage() {
   const { profile, role, updateProfile, invalidate } = useUserProfile()
   const toast = useToast()
   const [isSwitchingRole, setIsSwitchingRole] = useState(false)
+  const [isRestartingOnboarding, setIsRestartingOnboarding] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [targetRole, setTargetRole] = useState<Role | null>(null)
   const [mounted, setMounted] = useState(false)
@@ -33,6 +34,7 @@ export default function SettingsPage() {
   const currentRole = role || (isValidRole(profile?.role) ? profile.role : null)
   const isDisciple = currentRole === 'disciple'
   const isSteward = currentRole === 'steward'
+  const showDeveloperTools = isSteward
 
   const handleSignOut = async () => {
     await signOut()
@@ -126,6 +128,45 @@ export default function SettingsPage() {
         break
       default:
         break
+    }
+  }
+
+  const handleRestartOnboarding = async () => {
+    setIsRestartingOnboarding(true)
+
+    try {
+      const response = await fetch('/api/dev/restart-onboarding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to restart onboarding')
+      }
+
+      localStorage.removeItem('gathered_user_profile')
+
+      toast({
+        title: 'Onboarding restarted',
+        description: 'Redirecting you into the onboarding flow now.',
+        variant: 'success',
+        duration: 2500,
+      })
+
+      invalidate()
+      router.push('/onboarding')
+    } catch (error: any) {
+      toast({
+        title: 'Could not restart onboarding',
+        description: error.message || 'Please try again.',
+        variant: 'error',
+        duration: 4000,
+      })
+    } finally {
+      setIsRestartingOnboarding(false)
     }
   }
 
@@ -282,6 +323,34 @@ export default function SettingsPage() {
           </div>
 
           {/* Sign Out */}
+          {showDeveloperTools && (
+            <div className="bg-white dark:bg-navy-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+              <h3 className="font-semibold text-navy-900 dark:text-white mb-1">
+                Developer Tools
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Internal testing tools for replaying onboarding without creating a new account.
+              </p>
+              <button
+                onClick={handleRestartOnboarding}
+                disabled={isRestartingOnboarding}
+                className="w-full flex items-center justify-center space-x-2 p-3 rounded-lg border border-gold-500/40 bg-gold-500/10 text-gold-700 dark:text-gold-200 hover:bg-gold-500/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isRestartingOnboarding ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                    <span className="font-medium">Restarting...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-5 h-5" />
+                    <span className="font-medium">Restart onboarding</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-navy-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
             <button
               onClick={handleSignOut}
