@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useToast } from '@/components/ui/Toast'
 import { FellowshipService } from '@/lib/fellowship-service'
+import { supabase } from '@/lib/supabase'
 import type { FellowshipGroup } from '@/types'
 import type { Church as ChurchType } from '@/types/church'
 
@@ -62,6 +63,18 @@ export default function WelcomePage() {
 
   const userInterests = useMemo(() => profile?.interests || [], [profile?.interests])
 
+  const getAccessToken = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (!session?.access_token) {
+      throw new Error('Your session expired. Please log in again.')
+    }
+
+    return session.access_token
+  }
+
   useEffect(() => {
     if (authLoading) return
     if (!user) {
@@ -78,7 +91,13 @@ export default function WelcomePage() {
       setLoading(true)
 
       try {
-        const peopleRequest = fetch('/api/discover/people')
+        const accessToken = await getAccessToken()
+
+        const peopleRequest = fetch('/api/discover/people', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        })
           .then(async (response) => {
             if (!response.ok) {
               const data = await response.json().catch(() => ({}))
@@ -155,10 +174,13 @@ export default function WelcomePage() {
     try {
       setConnectingIds((prev) => [...prev, personId])
 
+      const accessToken = await getAccessToken()
+
       const response = await fetch('/api/connections/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ recipientId: personId }),
       })
@@ -221,10 +243,13 @@ export default function WelcomePage() {
     try {
       setIsSettingChurch(true)
 
+      const accessToken = await getAccessToken()
+
       const response = await fetch('/api/profile/set-church', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           action: 'set',

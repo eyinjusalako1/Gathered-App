@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { cacheProfile, getCachedProfile } from '@/lib/prefs'
 import { ArrowLeft, Loader2, MessageCircle } from 'lucide-react'
 
 type GrowthIntent =
@@ -201,6 +202,15 @@ export default function OnboardingPage() {
         setIsSubmitting(false)
         return
       }
+
+      const cachedProfile = getCachedProfile() || { id: user.id }
+      cacheProfile({
+        ...cachedProfile,
+        id: user.id,
+        growth_focus: growthFocus || null,
+        onboarding_completed: true,
+        onboarding_version: 2,
+      })
 
       setShowFinal(true)
     } catch (error: any) {
