@@ -33,17 +33,6 @@ const getInitials = (name: string) =>
     .map((part) => part[0]?.toUpperCase() || '')
     .join('') || 'G'
 
-const scoreGroup = (group: FellowshipGroup, city: string | null, interests: string[]) => {
-  const normalizedCity = city?.trim().toLowerCase() || ''
-  const normalizedLocation = group.location?.trim().toLowerCase() || ''
-  const sameCity = normalizedCity && normalizedLocation.includes(normalizedCity) ? 2 : 0
-  const tagMatches = (group.tags || []).filter((tag) =>
-    interests.some((interest) => interest.toLowerCase() === tag.toLowerCase())
-  ).length
-
-  return sameCity + tagMatches
-}
-
 export default function WelcomePage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
@@ -107,21 +96,19 @@ export default function WelcomePage() {
           })
           .then((data) => (Array.isArray(data.people) ? data.people.slice(0, 3) : []))
 
-        const groupsRequest = Promise.all([
-          FellowshipService.getGroups(user.id),
-          FellowshipService.getUserJoinedGroups(user.id),
-        ]).then(([groups, joinedGroups]) => {
-          const joinedIds = new Set(joinedGroups.map((group) => group.id))
-          const candidates = groups.filter((group) => !joinedIds.has(group.id))
-
-          if (candidates.length === 0) return null
-
-          return [...candidates].sort((a, b) => {
-            const scoreDiff = scoreGroup(b, profile?.city || null, userInterests) - scoreGroup(a, profile?.city || null, userInterests)
-            if (scoreDiff !== 0) return scoreDiff
-            return (b.member_count || 0) - (a.member_count || 0)
-          })[0]
+        const groupsRequest = fetch('/api/welcome/recommendations', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
         })
+          .then(async (response) => {
+            if (!response.ok) {
+              const data = await response.json().catch(() => ({}))
+              throw new Error(data.error || 'Failed to load fellowship recommendation')
+            }
+            return response.json()
+          })
+          .then((data) => data.group || null)
 
         const churchRequest = profile?.my_church_id
           ? Promise.resolve(null)
