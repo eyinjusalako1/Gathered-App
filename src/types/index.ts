@@ -67,7 +67,14 @@ export interface GroupChatMessage {
   metadata?: {
     passageRef?: string
     reflection?: string
+    reply_to?: {
+      id: string
+      content: string
+      sender_name: string
+    }
+    edited_at?: string
   } | null
+  edited_at?: string | null
   created_at: string
   user: {
     id: string

@@ -1,6 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { createUserSupabaseClient } from "@/lib/server-auth-utils";
+import { sendPushToUsers } from "@/lib/notifications";
+
+/**
+ * PATCH /api/chat/group/[groupId]
+ * Edit an existing group message. Only the original sender may edit.
+ * Body: { messageId: string, content: string }
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ groupId: string }> }
+) {
+  try {
+    const { groupId } = await params;
+
+    const body = await req.json();
+    const { messageId, content } = body;
+
+    if (!messageId || !content?.trim()) {
+      return NextResponse.json({ error: "messageId and content are required" }, { status: 400 });
+    }
+
+    const authResult = await createUserSupabaseClient(req);
+    if (!authResult) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { userId } = authResult;
+
+    // Verify the message belongs to this group and this user
+    const { data: existing, error: fetchErr } = await supabaseServer
+      .from("group_chat_messages")
+      .select("id, user_id, metadata")
+      .eq("id", messageId)
+      .eq("group_id", groupId)
+      .single();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    }
+    if (existing.user_id !== userId) {
+      return NextResponse.json({ error: "You can only edit your own messages" }, { status: 403 });
+    }
+
+    const now = new Date().toISOString();
+    const updatedMetadata = { ...(existing.metadata || {}), edited_at: now };
+
+    const { data: updated, error: updateErr } = await supabaseServer
+      .from("group_chat_messages")
+      .update({ content: content.trim(), edited_at: now, metadata: updatedMetadata })
+      .eq("id", messageId)
+      .select("id, group_id, user_id, content, type, metadata, created_at, edited_at")
+      .single();
+
+    if (updateErr) {
+      return NextResponse.json({ error: "Failed to update message" }, { status: 500 });
+    }
+
+    return NextResponse.json({ message: updated });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+  }
+}
 
 /**
  * GET /api/chat/group/[groupId]
@@ -13,12 +74,10 @@ import { createUserSupabaseClient } from "@/lib/server-auth-utils";
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ groupId: string }> | { groupId: string } }
+  { params }: { params: Promise<{ groupId: string }> }
 ) {
   try {
-    // Resolve params (handle both Promise and direct params)
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const groupId = resolvedParams.groupId;
+    const { groupId } = await params;
 
     if (!groupId) {
       return NextResponse.json(
@@ -56,9 +115,8 @@ export async function GET(
       );
     }
 
-    // Fetch messages using user-authenticated client (RLS enforces access)
-    // Use explicit column selection to avoid PostgREST relationship resolution issues
-    const { data: messages, error: messagesError } = await supabase
+    // Step 1: fetch messages
+    const { data: messages, error: messagesError } = await supabaseServer
       .from("group_chat_messages")
       .select("id, group_id, user_id, content, type, metadata, created_at")
       .eq("group_id", groupId)
@@ -67,17 +125,11 @@ export async function GET(
 
     if (messagesError) {
       console.error("Error fetching messages:", messagesError);
-      console.error("Messages error details:", {
-        message: messagesError.message,
-        code: messagesError.code,
-        details: messagesError.details,
-        hint: messagesError.hint,
-      });
       return NextResponse.json(
-        { 
-          error: "Failed to fetch messages", 
+        {
+          error: "Failed to fetch messages",
           details: messagesError.message,
-          hint: messagesError.hint || "Check if group_chat_messages table exists"
+          hint: messagesError.hint || "Check if group_chat_messages table exists",
         },
         { status: 500 }
       );
@@ -87,29 +139,26 @@ export async function GET(
       return NextResponse.json({ messages: [] });
     }
 
-    // Get user profiles for message authors (fetch separately to avoid relationship issues)
-    // Using user-authenticated client (RLS will enforce access to profiles)
+    // Step 2: fetch profiles for all senders (service role bypasses RLS)
     const userIds = Array.from(new Set(messages.map((m: any) => m.user_id)));
-    let profileMap = new Map();
-    
+    let profileMap = new Map<string, { name: string | null; email: string | null; avatar_url: string | null }>();
+
     if (userIds.length > 0) {
-      const { data: profiles, error: profilesError } = await supabase
+      const { data: profiles } = await supabaseServer
         .from("user_profiles")
-        .select("id, name, avatar_url")
+        .select("id, name, email, avatar_url")
         .in("id", userIds);
 
-      if (profilesError) {
-        console.error("Error fetching profiles:", profilesError);
-        // Continue without profiles - we'll use fallbacks
-      } else if (profiles) {
+      if (profiles) {
         profileMap = new Map(profiles.map((p: any) => [p.id, p]));
       }
     }
 
-    // Combine messages with user profiles
+    // Step 3: merge
     const messagesWithProfiles = messages.map((message: any) => {
       const profile = profileMap.get(message.user_id);
-      
+      const displayName = profile?.name?.trim() || profile?.email?.split('@')[0] || 'Member';
+
       return {
         id: message.id,
         group_id: message.group_id,
@@ -120,7 +169,7 @@ export async function GET(
         created_at: message.created_at,
         user: {
           id: message.user_id,
-          name: profile?.name || `User ${message.user_id.substring(0, 8)}`,
+          name: displayName,
           avatar_url: profile?.avatar_url || null,
         },
       };
@@ -155,12 +204,10 @@ export async function GET(
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ groupId: string }> | { groupId: string } }
+  { params }: { params: Promise<{ groupId: string }> }
 ) {
   try {
-    // Resolve params
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const groupId = resolvedParams.groupId;
+    const { groupId } = await params;
 
     if (!groupId) {
       return NextResponse.json(
@@ -257,23 +304,53 @@ export async function POST(
       );
     }
 
-    // Get user profile for the message author using user-authenticated client
-    const { data: profileData } = await supabase
+    // Get sender profile via service role (bypasses RLS)
+    const { data: profile } = await supabaseServer
       .from("user_profiles")
-      .select("id, name, avatar_url")
+      .select("name, email, avatar_url")
       .eq("id", userId)
-      .limit(1);
+      .single();
 
-    const profile = profileData && profileData.length > 0 ? profileData[0] : null;
+    const displayName = profile?.name?.trim() || profile?.email?.split("@")[0] || "Member";
 
-    // Get user email from auth for fallback
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    // Fire push notifications to all other active members (non-blocking)
+    void (async () => {
+      try {
+        const [{ data: group }, { data: otherMembers }] = await Promise.all([
+          supabaseServer
+            .from("fellowship_groups")
+            .select("name")
+            .eq("id", groupId)
+            .single(),
+          supabaseServer
+            .from("group_memberships")
+            .select("user_id")
+            .eq("group_id", groupId)
+            .eq("status", "active")
+            .neq("user_id", userId),
+        ]);
+
+        const recipientIds = (otherMembers || []).map((m: any) => m.user_id);
+        if (recipientIds.length === 0) return;
+
+        const groupName = group?.name || "Group";
+        const bodyText = content.trim().slice(0, 100);
+
+        await sendPushToUsers(recipientIds, {
+          title: displayName,
+          body: `${groupName}: ${bodyText}`,
+          url: `/chat/${groupId}`,
+        });
+      } catch {
+        // Push errors must never affect the response
+      }
+    })();
 
     const messageWithProfile = {
       ...newMessage,
       user: {
         id: userId,
-        name: profile?.name || authUser?.email?.split("@")[0] || "User",
+        name: displayName,
         avatar_url: profile?.avatar_url || null,
       },
     };

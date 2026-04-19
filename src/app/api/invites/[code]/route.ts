@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
-// Ensure this route is dynamically rendered
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
  * GET /api/invites/[code]
- * 
- * Resolve an invite by code.
- * Returns invite details including group metadata if applicable.
+ *
+ * Resolve an invite by code. Returns 410 if use limit reached.
  */
 export async function GET(
   req: NextRequest,
@@ -20,40 +18,27 @@ export async function GET(
     const { code } = resolvedParams;
 
     if (!code) {
-      return NextResponse.json(
-        { error: "Invite code is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invite code is required" }, { status: 400 });
     }
 
-    // Get invite by code
     const { data: invite, error: inviteError } = await supabaseServer
       .from("invites")
-      .select("id, invite_code, invite_type, group_id, created_at, accepted_at")
+      .select("id, invite_code, invite_type, group_id, created_at, use_count, max_uses")
       .eq("invite_code", code.toUpperCase())
-      .maybeSingle(); // Use maybeSingle to handle not found gracefully
+      .maybeSingle();
 
     if (inviteError) {
       console.error("Error fetching invite:", inviteError);
-      return NextResponse.json(
-        { error: "Failed to load invite" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to load invite" }, { status: 500 });
     }
 
     if (!invite) {
-      return NextResponse.json(
-        { error: "Invite not found or invalid" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Invite not found or invalid" }, { status: 404 });
     }
 
-    // Check if already accepted
-    if (invite.accepted_at) {
-      return NextResponse.json(
-        { error: "This invite has already been used" },
-        { status: 410 } // Gone
-      );
+    // Check if invite has reached its usage limit
+    if (invite.max_uses !== null && invite.use_count >= invite.max_uses) {
+      return NextResponse.json({ error: "This invite link has reached its maximum uses" }, { status: 410 });
     }
 
     // Get group metadata if it's a group invite
@@ -61,7 +46,7 @@ export async function GET(
     if (invite.invite_type === 'group' && invite.group_id) {
       const { data: group, error: groupError } = await supabaseServer
         .from("fellowship_groups")
-        .select("id, name, description, avatar_url")
+        .select("id, name, description, avatar_url, member_count, is_private")
         .eq("id", invite.group_id)
         .single();
 
@@ -71,6 +56,8 @@ export async function GET(
           name: group.name,
           description: group.description,
           avatar_url: group.avatar_url,
+          member_count: group.member_count ?? 0,
+          is_private: group.is_private,
         };
       }
     }
@@ -86,10 +73,6 @@ export async function GET(
     });
   } catch (error: any) {
     console.error("Error in GET /api/invites/[code]:", error);
-    return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }
-

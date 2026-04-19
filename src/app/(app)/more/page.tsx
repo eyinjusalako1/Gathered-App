@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useUserProfile } from '@/hooks/useUserProfile'
+import { usePendingConnections } from '@/hooks/usePendingConnections'
 import {
   User,
   Calendar,
@@ -29,6 +30,7 @@ export default function MorePage() {
   const router = useRouter()
   const { user } = useAuth()
   const { profile } = useUserProfile()
+  const { acceptedCount } = usePendingConnections()
   // Extract name from profile
   const displayName = profile?.name || user?.email?.split('@')[0] || 'User'
   const firstName = displayName.split(' ')[0] || displayName
@@ -81,10 +83,10 @@ export default function MorePage() {
     },
     {
       id: 'connections',
-      label: 'Connections',
+      label: 'My Connections',
       icon: Users,
       route: '/more/connections',
-      description: 'Manage your connections',
+      description: acceptedCount > 0 ? `${acceptedCount} connection${acceptedCount === 1 ? '' : 's'}` : 'People you\'ve connected with',
       comingSoon: false
     },
     {

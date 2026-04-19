@@ -9,32 +9,17 @@ import { FellowshipService } from '@/lib/fellowship-service'
 import { FellowshipGroup } from '@/types'
 import { supabase } from '@/lib/supabase'
 import { getDailyWord } from '@/lib/dailyWord'
-import { 
-  BookOpen, 
-  TrendingUp, 
-  CheckCircle, 
-  Clock, 
-  Star, 
+import {
+  BookOpen,
+  TrendingUp,
+  Clock,
   Plus,
   ChevronDown,
   ChevronUp,
-  Copy,
   MessageCircle,
   Users,
   ArrowRight
 } from 'lucide-react'
-
-interface Reading {
-  id: string
-  title: string
-  verse: string
-  content: string
-  fullContent: string
-  date: string
-  isCompleted: boolean
-  plan?: string
-  reflectionPrompts?: string[]
-}
 
 // localStorage keys
 const STORAGE_KEYS = {
@@ -69,49 +54,9 @@ const getCompletionStorageKey = (dateKey: string) => `${DEVOTION_COMPLETION_PREF
 const getCompletionMessage = (streak: number) => {
   if (streak <= 1) return 'You started a rhythm today.'
   if (streak <= 4) return `Day ${streak} of consistency.`
-  return "You're building a strong rhythm."
-}
-
-// Mock data
-const mockReadings: Reading[] = [
-  {
-    id: '1',
-    title: 'The Lord is My Shepherd',
-    verse: 'Psalm 23:1–6',
-    content: 'The LORD is my shepherd; I shall not want. He makes me lie down in green pastures. He leads me beside still waters...',
-    fullContent: `The LORD is my shepherd; I shall not want.
-He makes me lie down in green pastures.
-He leads me beside still waters.
-He restores my soul.
-He leads me in paths of righteousness
-    for his name's sake.
-
-Even though I walk through the valley of the shadow of death,
-    I will fear no evil,
-for you are with me;
-    your rod and your staff,
-    they comfort me.
-
-You prepare a table before me
-    in the presence of my enemies;
-you anoint my head with oil;
-    my cup overflows.
-Surely goodness and mercy shall follow me
-    all the days of my life,
-and I shall dwell in the house of the LORD
-    forever.`,
-    date: new Date().toISOString().split('T')[0],
-    isCompleted: false,
-    reflectionPrompts: [
-      'How does this passage remind you of God\'s care in your life?',
-      'What does it mean for you to "dwell in the house of the LORD forever"?'
-    ]
-  }
-]
-
-const VERSE_OF_THE_DAY = {
-  verse: 'John 3:16',
-  text: 'For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.'
+  if (streak <= 6) return "You're building a strong rhythm."
+  if (streak <= 29) return `${streak} days in a row.`
+  return `${streak} days — faithful and steady.`
 }
 
 export default function DevotionsPage() {
@@ -123,24 +68,24 @@ export default function DevotionsPage() {
   const dailyWord = getDailyWord(profile?.growth_focus)
   const yesterdayWord = getDailyWord(profile?.growth_focus, -1)
 
-  const [todayReading, setTodayReading] = useState<Reading>(mockReadings[0])
   const [userGroups, setUserGroups] = useState<FellowshipGroup[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
-  
-  // State for stats (loaded from localStorage)
+
+  // Completion + streak state (loaded from localStorage)
+  const [isCompletedToday, setIsCompletedToday] = useState(false)
   const [streak, setStreak] = useState(0)
   const [totalReadings, setTotalReadings] = useState(0)
   const [completionMessage, setCompletionMessage] = useState('')
-  
-  // State for expandable sections
+
+  // Expandable sections
   const [isPassageExpanded, setIsPassageExpanded] = useState(false)
   const [reflection, setReflection] = useState('')
-  
-  // State for share modal
+
+  // Share modal
   const [showShareModal, setShowShareModal] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState<string>('')
   const [sharing, setSharing] = useState(false)
-  
+
   const todayKey = React.useMemo(() => getReflectionDateKey(), [])
   const todayCompletionKey = React.useMemo(() => getCompletionDateKey(), [])
   const completionStorageKey = React.useMemo(
@@ -173,25 +118,24 @@ export default function DevotionsPage() {
       calculatedStreak += 1
     }
 
-    const isCompletedToday = window.localStorage.getItem(completionStorageKey) === 'true'
+    const completedToday = window.localStorage.getItem(completionStorageKey) === 'true'
 
     setStreak(calculatedStreak)
     setTotalReadings(completionKeys.length)
-    setTodayReading((prev) => ({ ...prev, isCompleted: isCompletedToday }))
-    setCompletionMessage(isCompletedToday ? getCompletionMessage(calculatedStreak) : '')
+    setIsCompletedToday(completedToday)
+    setCompletionMessage(completedToday ? getCompletionMessage(calculatedStreak) : '')
 
     window.localStorage.setItem(STORAGE_KEYS.STREAK, String(calculatedStreak))
     window.localStorage.setItem(STORAGE_KEYS.TOTAL_READINGS, String(completionKeys.length))
-    window.localStorage.setItem(STORAGE_KEYS.LAST_COMPLETED, isCompletedToday ? todayCompletionKey : '')
+    window.localStorage.setItem(STORAGE_KEYS.LAST_COMPLETED, completedToday ? todayCompletionKey : '')
 
     return {
       calculatedStreak,
       totalReadingsCount: completionKeys.length,
-      isCompletedToday,
+      isCompletedToday: completedToday,
     }
   }, [completionStorageKey, todayCompletionKey])
 
-  // Load stats from localStorage on mount
   useEffect(() => {
     if (typeof window === 'undefined') return
     syncCompletionState()
@@ -224,14 +168,13 @@ export default function DevotionsPage() {
     }
     toast({ title: 'Saved', variant: 'success' })
   }, [reflection, reflectionStorageKey, toast])
-  
-  // Load user groups for community section
+
   useEffect(() => {
     if (user?.id) {
       loadUserGroups()
     }
   }, [user?.id])
-  
+
   const loadUserGroups = async () => {
     if (!user?.id) return
     try {
@@ -244,27 +187,21 @@ export default function DevotionsPage() {
       setLoadingGroups(false)
     }
   }
-  
+
   const handleMarkComplete = () => {
-    clearReflectionStorage()
-    const alreadyCompleted =
-      todayReading.isCompleted || localStorage.getItem(completionStorageKey) === 'true'
-    
-    // Prevent double-completing on same day
-    if (alreadyCompleted) {
+    if (isCompletedToday || localStorage.getItem(completionStorageKey) === 'true') {
       toast({
         title: 'Already completed',
-        description: 'You\'ve already completed today\'s reading.',
+        description: "You've already completed today's reading.",
         variant: 'info',
         duration: 3000,
       })
       return
     }
-    
-    // Update completion status
+
     localStorage.setItem(completionStorageKey, 'true')
     const completionStats = syncCompletionState()
-    
+
     toast({
       title: 'Reading completed!',
       description: getCompletionMessage(completionStats?.calculatedStreak ?? 1),
@@ -272,57 +209,7 @@ export default function DevotionsPage() {
       duration: 3000,
     })
   }
-  
-  const handleCopyVerse = async () => {
-    const text = `${VERSE_OF_THE_DAY.verse} - ${VERSE_OF_THE_DAY.text}`
-    try {
-      await navigator.clipboard.writeText(text)
-      toast({
-        title: 'Verse copied!',
-        description: 'The verse has been copied to your clipboard.',
-        variant: 'success',
-        duration: 2000,
-      })
-    } catch (error) {
-      toast({
-        title: 'Failed to copy',
-        description: 'Please try again.',
-        variant: 'error',
-        duration: 2000,
-      })
-    }
-  }
-  
-  const handleSaveVerse = () => {
-    const savedVerses = JSON.parse(localStorage.getItem(STORAGE_KEYS.SAVED_VERSES) || '[]')
-    const today = new Date().toISOString().split('T')[0]
-    const verseEntry = {
-      verse: VERSE_OF_THE_DAY.verse,
-      text: VERSE_OF_THE_DAY.text,
-      date: today
-    }
-    
-    // Check if already saved today
-    if (!savedVerses.some((v: any) => v.date === today && v.verse === VERSE_OF_THE_DAY.verse)) {
-      savedVerses.push(verseEntry)
-      localStorage.setItem(STORAGE_KEYS.SAVED_VERSES, JSON.stringify(savedVerses))
-      
-      toast({
-        title: 'Verse saved!',
-        description: 'You can find saved verses in your profile.',
-        variant: 'success',
-        duration: 2000,
-      })
-    } else {
-      toast({
-        title: 'Already saved',
-        description: 'This verse is already in your saved verses.',
-        variant: 'info',
-        duration: 2000,
-      })
-    }
-  }
-  
+
   const handleShareToGroup = () => {
     if (!reflection.trim()) {
       toast({ title: 'Write something first', variant: 'error' })
@@ -332,32 +219,25 @@ export default function DevotionsPage() {
       router.push('/fellowship')
       return
     }
-    
-    // Open share modal
     if (userGroups.length > 0) {
       setSelectedGroupId(userGroups[0].id)
     }
     setShowShareModal(true)
   }
-  
+
   const handlePostToGroup = async () => {
     if (!selectedGroupId || sharing) return
-    
+
     setSharing(true)
     try {
-      // Build formatted message
       let message = `📖 Today's Reading: ${dailyWord.reference}\n`
-      
       if (reflection.trim()) {
         message += `Reflection: ${reflection.trim()}\n`
       }
-      
       message += `Let's discuss this together on Gathered 🙌`
-      
-      // Get session to include access token
+
       const { data: { session } } = await supabase.auth.getSession()
-      
-      // Post to group chat
+
       const response = await fetch(`/api/chat/group/${selectedGroupId}`, {
         method: 'POST',
         headers: {
@@ -373,26 +253,25 @@ export default function DevotionsPage() {
           },
         }),
       })
-      
+
       if (!response.ok) {
         if (response.status === 403) {
           throw new Error('You must be a member of this group to share')
         }
         throw new Error('Failed to post message')
       }
-      
+
       toast({
         title: 'Shared!',
         description: 'Your devotion has been posted to the group chat.',
         variant: 'success',
         duration: 3000,
       })
-      
+
       setShowShareModal(false)
       clearReflectionStorage()
       setReflection('')
-      
-      // Optional: navigate to chat after a short delay
+
       setTimeout(() => {
         router.push(`/chat/${selectedGroupId}`)
       }, 1500)
@@ -429,7 +308,7 @@ export default function DevotionsPage() {
               </button>
             )}
           </div>
-          
+
           {/* Stats Chips */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-navy-800/40 border border-gold-600/20 rounded-full px-4 py-2 flex items-center space-x-2">
@@ -439,7 +318,7 @@ export default function DevotionsPage() {
               </span>
             </div>
             <div className="bg-navy-800/40 border border-gold-600/20 rounded-full px-4 py-2 flex items-center space-x-2">
-              <CheckCircle className="w-4 h-4 text-gold-500" />
+              <BookOpen className="w-4 h-4 text-gold-500" />
               <span className="text-sm font-medium text-gold-500">
                 {totalReadings} total readings
               </span>
@@ -465,7 +344,7 @@ export default function DevotionsPage() {
               </span>
             </div>
             <div className="text-right">
-              {todayReading.isCompleted ? (
+              {isCompletedToday ? (
                 <div className="bg-gold-500/15 text-gold-500 border border-gold-600/30 px-3 py-1 rounded-full text-xs font-semibold">
                   Completed ✓
                 </div>
@@ -475,12 +354,12 @@ export default function DevotionsPage() {
                   <span>Pending</span>
                 </div>
               )}
-              {todayReading.isCompleted && completionMessage ? (
+              {isCompletedToday && completionMessage ? (
                 <p className="mt-2 text-xs text-slate-400">{completionMessage}</p>
               ) : null}
             </div>
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <h3 className="text-xl font-bold text-slate-50">{dailyWord.title}</h3>
             <span className="inline-flex items-center rounded-full border border-gold-500/40 bg-gold-500/10 px-3 py-1 text-xs font-semibold text-gold-200 sm:hidden">
@@ -490,7 +369,7 @@ export default function DevotionsPage() {
           <p className="text-slate-300 leading-relaxed mb-4 line-clamp-3">
             {dailyWord.text}
           </p>
-          
+
           <div className="flex items-center space-x-3 mb-4">
             <button
               onClick={() => setIsPassageExpanded(!isPassageExpanded)}
@@ -505,10 +384,10 @@ export default function DevotionsPage() {
             </button>
             <button
               onClick={handleMarkComplete}
-              disabled={todayReading.isCompleted}
+              disabled={isCompletedToday}
               className="border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent px-4 py-2 rounded-lg font-medium transition-colors"
             >
-              {todayReading.isCompleted ? 'Completed today' : 'Mark complete'}
+              {isCompletedToday ? 'Completed today' : 'Mark complete'}
             </button>
           </div>
 
@@ -559,18 +438,16 @@ export default function DevotionsPage() {
               </div>
             </div>
           </div>
-          
+
           {/* Expanded Passage Section */}
           {isPassageExpanded && (
             <div className="mt-6 pt-6 border-t border-white/10 space-y-6">
-              {/* Full Passage */}
               <div className="bg-navy-900/50 rounded-lg p-4 border border-white/5">
                 <p className="text-slate-200 leading-relaxed whitespace-pre-line">
                   {dailyWord.text}
                 </p>
               </div>
-              
-              {/* Reflection Prompt */}
+
               <div>
                 <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center space-x-2">
                   <MessageCircle className="w-4 h-4" />
@@ -583,11 +460,11 @@ export default function DevotionsPage() {
                   </li>
                 </ul>
               </div>
-              
             </div>
           )}
         </div>
 
+        {/* Yesterday's Word */}
         <div className="mb-8 bg-navy-800/20 border border-white/10 rounded-xl p-5">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
@@ -601,14 +478,13 @@ export default function DevotionsPage() {
           <h4 className="text-base font-semibold text-slate-50 mb-2">{yesterdayWord.title}</h4>
           <p className="text-sm text-slate-300 line-clamp-2">{yesterdayWord.text}</p>
         </div>
-        
+
         {/* Share Modal */}
         {showShareModal && userGroups.length > 0 && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-navy-800 border border-white/10 rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <h3 className="text-lg font-semibold text-slate-50 mb-4">Share to Group</h3>
-              
-              {/* Group Selection */}
+
               <div className="mb-4">
                 <label className="block text-sm font-medium text-slate-300 mb-2">
                   Select Group
@@ -625,8 +501,7 @@ export default function DevotionsPage() {
                   ))}
                 </select>
               </div>
-              
-              {/* Message Preview */}
+
               <div className="mb-4">
                 <label className="block text-sm font-medium text-slate-300 mb-2">
                   Message Preview
@@ -639,8 +514,7 @@ export default function DevotionsPage() {
                   </p>
                 </div>
               </div>
-              
-              {/* Actions */}
+
               <div className="flex items-center space-x-3">
                 <button
                   onClick={() => setShowShareModal(false)}
@@ -660,36 +534,6 @@ export default function DevotionsPage() {
             </div>
           </div>
         )}
-
-        {/* Verse of the Day */}
-        <div className="mb-8 bg-gradient-to-br from-navy-800/40 to-indigo-800/40 border border-gold-500/30 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-50 mb-1">Verse of the Day</h3>
-              <p className="text-sm text-gold-500">{VERSE_OF_THE_DAY.verse}</p>
-            </div>
-            <Star className="w-6 h-6 text-gold-500" />
-          </div>
-          <p className="text-slate-200 leading-relaxed mb-4 italic">
-            &quot;{VERSE_OF_THE_DAY.text}&quot;
-          </p>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleCopyVerse}
-              className="flex items-center space-x-2 border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 px-4 py-2 rounded-lg font-medium transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-              <span>Copy verse</span>
-            </button>
-            <button
-              onClick={handleSaveVerse}
-              className="flex items-center space-x-2 border border-gold-600/40 text-gold-500 hover:bg-gold-500/10 px-4 py-2 rounded-lg font-medium transition-colors"
-            >
-              <Star className="w-4 h-4" />
-              <span>Save verse</span>
-            </button>
-          </div>
-        </div>
 
         {/* Community Tie-in */}
         {loadingGroups ? (

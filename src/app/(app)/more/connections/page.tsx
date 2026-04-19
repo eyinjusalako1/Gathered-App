@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/components/ui/Toast'
+import { useUserProfile } from '@/hooks/useUserProfile'
 import { supabase } from '@/lib/supabase'
-import { 
-  ArrowLeft, 
-  Users, 
+import {
+  ArrowLeft,
+  Users,
   UserPlus,
   CheckCircle,
   XCircle,
@@ -16,6 +17,7 @@ import {
   MapPin,
   MessageSquare
 } from 'lucide-react'
+import { Skeleton, SkeletonText, SkeletonAvatar } from '@/components/ui/Skeleton'
 
 interface Connection {
   id: string
@@ -35,9 +37,14 @@ interface Connection {
 
 export default function ConnectionsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuth()
+  const { profile } = useUserProfile()
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing' | 'accepted'>('incoming')
+
+  const tabParam = searchParams.get('tab')
+  const initialTab = (tabParam === 'incoming' || tabParam === 'outgoing') ? tabParam : 'accepted'
+  const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing' | 'accepted'>(initialTab)
   const [incoming, setIncoming] = useState<Connection[]>([])
   const [outgoing, setOutgoing] = useState<Connection[]>([])
   const [accepted, setAccepted] = useState<Connection[]>([])
@@ -261,14 +268,28 @@ export default function ConnectionsPage() {
                 : 'text-slate-300 hover:text-white'
             }`}
           >
-            Friends ({accepted.length})
+            Connected ({accepted.length})
           </button>
         </div>
 
         {/* Loading State */}
         {loading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 text-gold-500 animate-spin" />
+          <div className="space-y-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="bg-navy-800/50 border border-gold-500/30 rounded-2xl p-4">
+                <div className="flex items-start gap-4">
+                  <SkeletonAvatar size="lg" />
+                  <div className="flex-1 space-y-2">
+                    <SkeletonText width="1/3" />
+                    <SkeletonText width="1/4" />
+                    <div className="flex gap-2 mt-2">
+                      <Skeleton className="h-8 w-20 rounded-full" />
+                      <Skeleton className="h-8 w-20 rounded-full" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -276,18 +297,44 @@ export default function ConnectionsPage() {
         {!loading && (
           <div className="space-y-4">
             {getCurrentList().length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="w-16 h-16 text-slate-500 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">
-                  {activeTab === 'incoming' && 'No incoming requests'}
-                  {activeTab === 'outgoing' && 'No sent requests'}
-                  {activeTab === 'accepted' && 'No connections yet'}
-                </h3>
-                <p className="text-slate-400">
-                  {activeTab === 'incoming' && 'You don\'t have any pending connection requests'}
-                  {activeTab === 'outgoing' && 'You haven\'t sent any connection requests'}
-                  {activeTab === 'accepted' && 'Start connecting with people to see them here'}
-                </p>
+              <div className="rounded-2xl border border-white/10 bg-navy-900/40 p-8 text-center space-y-3">
+                {activeTab === 'incoming' ? (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                      <CheckCircle className="w-6 h-6 text-emerald-400" />
+                    </div>
+                    <p className="text-base font-semibold text-slate-100">You're all caught up ✓</p>
+                    <p className="text-sm text-slate-400">No pending connection requests right now.</p>
+                  </>
+                ) : activeTab === 'outgoing' ? (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto">
+                      <UserPlus className="w-6 h-6 text-slate-500" />
+                    </div>
+                    <p className="text-base font-semibold text-slate-100">No sent requests</p>
+                    <p className="text-sm text-slate-400">People you reach out to will appear here.</p>
+                    <button
+                      onClick={() => router.push('/discover')}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-xs font-semibold hover:bg-gold-600 transition-colors"
+                    >
+                      Find people
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto">
+                      <Users className="w-6 h-6 text-slate-500" />
+                    </div>
+                    <p className="text-base font-semibold text-slate-100">No connections yet</p>
+                    <p className="text-sm text-slate-400">Find people in your fellowships and start connecting.</p>
+                    <button
+                      onClick={() => router.push('/discover')}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-xs font-semibold hover:bg-gold-600 transition-colors"
+                    >
+                      Find people
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               getCurrentList().map((connection) => (
@@ -365,25 +412,45 @@ export default function ConnectionsPage() {
                         </div>
                       )}
 
-                      {activeTab === 'accepted' && (
-                        <button
-                          onClick={() => handleMessage(connection.other_user.id, connection.id)}
-                          disabled={actionLoading === connection.id}
-                          className="w-full bg-gold-500 text-navy-900 py-2 px-4 rounded-lg font-semibold hover:bg-gold-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                        >
-                          {actionLoading === connection.id ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Opening...</span>
-                            </>
-                          ) : (
-                            <>
-                              <MessageSquare className="w-4 h-4" />
-                              <span>Message</span>
-                            </>
-                          )}
-                        </button>
-                      )}
+                      {activeTab === 'accepted' && (() => {
+                        const myInterests: string[] = profile?.interests ?? []
+                        const shared = connection.other_user.interests.filter(
+                          (i: string) => myInterests.map(x => x.toLowerCase()).includes(i.toLowerCase())
+                        )
+                        return (
+                          <>
+                            {shared.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mb-3">
+                                {shared.slice(0, 4).map((interest: string) => (
+                                  <span
+                                    key={interest}
+                                    className="px-2 py-0.5 bg-gold-500/10 border border-gold-500/20 text-gold-400 text-xs rounded-full"
+                                  >
+                                    {interest}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <button
+                              onClick={() => handleMessage(connection.other_user.id, connection.id)}
+                              disabled={actionLoading === connection.id}
+                              className="w-full bg-gold-500 text-navy-900 py-2 px-4 rounded-lg font-semibold hover:bg-gold-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                            >
+                              {actionLoading === connection.id ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  <span>Opening...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <MessageSquare className="w-4 h-4" />
+                                  <span>Message</span>
+                                </>
+                              )}
+                            </button>
+                          </>
+                        )
+                      })()}
                     </div>
                   </div>
                 </div>

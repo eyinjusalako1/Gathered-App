@@ -244,6 +244,120 @@ const versePools: Record<string, BaseDailyWordEntry[]> = {
         'Father, let Your Word speak to my heart.\nMake me responsive to Your truth.',
     },
   ],
+  faith: [
+    {
+      title: 'Faith Is the Assurance',
+      reference: 'Hebrews 11:1',
+      text: 'Now faith is the assurance of things hoped for, the conviction of things not seen.',
+      reflection:
+        'Faith is not the absence of doubt — it is trust despite it.\nWhat are you hoping for that you cannot yet see?\nGod is working in the unseen places.\nHold on with confident expectation.',
+      prayer:
+        'Father, strengthen my faith in what I cannot see.\nHelp me trust Your faithfulness today.',
+    },
+    {
+      title: 'Faith Without Works Is Dead',
+      reference: 'James 2:17',
+      text: 'Faith by itself, if it does not have works, is dead.',
+      reflection:
+        'Living faith moves — it shows up, it acts, it loves.\nHow can your faith take a visible step today?\nGod honours trust that leads to action.\nLet your belief be made real.',
+      prayer:
+        'Lord, make my faith alive and active.\nHelp me live what I believe today.',
+    },
+    {
+      title: 'Without Faith It Is Impossible',
+      reference: 'Hebrews 11:6',
+      text: 'Without faith it is impossible to please God, because anyone who comes to Him must believe that He exists and that He rewards those who earnestly seek Him.',
+      reflection:
+        'Seeking God is itself an act of faith.\nYou are not too far, too broken, or too late.\nHe rewards those who come with open hearts.\nApproach Him today with expectation.',
+      prayer:
+        'God, I come to You today with faith.\nReward my seeking with Your presence.',
+    },
+    {
+      title: 'Your Faith Has Made You Well',
+      reference: 'Luke 17:19',
+      text: 'Rise and go; your faith has made you well.',
+      reflection:
+        'Jesus sees faith, however small.\nWhat do you need to bring to Him today?\nHe responds to trust with wholeness.\nCome to Him and rise.',
+      prayer:
+        'Jesus, I bring my need to You.\nLet my faith meet Your power today.',
+    },
+  ],
+  prayer: [
+    {
+      title: 'Ask and It Will Be Given',
+      reference: 'Matthew 7:7',
+      text: 'Ask and it will be given to you; seek and you will find; knock and the door will be opened to you.',
+      reflection:
+        'God invites you into conversation, not performance.\nWhat have you been carrying instead of bringing to Him?\nPrayer is the open door, not a last resort.\nAsk, seek, knock — He is listening.',
+      prayer:
+        'Father, I come to You with open hands.\nTeach me to ask and trust You with the answer.',
+    },
+    {
+      title: 'Pray Without Ceasing',
+      reference: '1 Thessalonians 5:17',
+      text: 'Pray without ceasing.',
+      reflection:
+        'Prayer is not only a scheduled moment — it is a posture.\nHow can you include God in your ordinary moments today?\nLet conversation with Him run through your whole day.\nHe is always near.',
+      prayer:
+        'Lord, keep me in constant conversation with You.\nMake prayer as natural as breathing today.',
+    },
+    {
+      title: 'The Spirit Intercedes',
+      reference: 'Romans 8:26',
+      text: 'The Spirit helps us in our weakness. We do not know what we ought to pray for, but the Spirit Himself intercedes for us.',
+      reflection:
+        'You do not need perfect words to pray.\nGod meets you in your uncertainty.\nThe Holy Spirit carries what you cannot express.\nCome as you are — He understands.',
+      prayer:
+        'Holy Spirit, intercede for me today.\nBring my heart before the Father when I cannot find words.',
+    },
+    {
+      title: 'Whatever You Ask in My Name',
+      reference: 'John 16:24',
+      text: 'Until now you have not asked for anything in my name. Ask and you will receive, and your joy will be complete.',
+      reflection:
+        "God's desire is for your joy to be full.\nWhat bold request can you bring to Him today?\nPrayer in Jesus's name opens doors.\nCome with confidence and expectation.",
+      prayer:
+        'Jesus, I ask in Your name today.\nFill me with the joy of answered prayer.',
+    },
+  ],
+  healing: [
+    {
+      title: 'He Heals the Brokenhearted',
+      reference: 'Psalm 147:3',
+      text: 'He heals the brokenhearted and binds up their wounds.',
+      reflection:
+        'God does not keep His distance from pain — He moves toward it.\nWhat wound are you carrying today?\nHe is the healer of deep and hidden places.\nBring it to Him and let Him bind it up.',
+      prayer:
+        'Lord, I bring You my broken places.\nHeal me where I cannot heal myself.',
+    },
+    {
+      title: 'By His Wounds We Are Healed',
+      reference: 'Isaiah 53:5',
+      text: 'By His wounds we are healed.',
+      reflection:
+        'Jesus bore the cost of our restoration.\nHealing is not just physical — it is whole.\nWhat do you need to receive from Him today?\nHis sacrifice makes you whole.',
+      prayer:
+        'Jesus, thank You for what Your wounds have purchased for me.\nLet Your healing work deeply in my life.',
+    },
+    {
+      title: 'Come to Me, You Who Are Weary',
+      reference: 'Matthew 11:28',
+      text: 'Come to me, all you who are weary and burdened, and I will give you rest.',
+      reflection:
+        "Rest is God's gift to the worn-out soul.\nYou do not need to earn it or explain it.\nJust come with what you are carrying.\nHe will exchange it for rest.",
+      prayer:
+        'Jesus, I am tired. I come to You.\nGive me the rest only You can give.',
+    },
+    {
+      title: 'Restore to Me the Joy',
+      reference: 'Psalm 51:12',
+      text: 'Restore to me the joy of your salvation and grant me a willing spirit, to sustain me.',
+      reflection:
+        'Joy can be lost and found again — God restores it.\nHave you lost something of the life He gave you?\nAsk Him to renew what has grown weary.\nRestoration is a prayer He loves to answer.',
+      prayer:
+        'Father, restore my joy today.\nRenew a willing and hopeful spirit within me.',
+    },
+  ],
 }
 
 const focusAliases: Record<string, string> = {
@@ -255,6 +369,9 @@ const focusAliases: Record<string, string> = {
   relationship: 'relationships',
   bible: 'bible',
   'understanding the bible': 'bible',
+  faith: 'faith',
+  prayer: 'prayer',
+  healing: 'healing',
 }
 
 function getDateKey(dayOffset = 0): string {
@@ -285,6 +402,9 @@ export function getDailyWord(growthFocus?: string | null, dayOffset = 0): DailyW
     purpose: 'Where might God be directing your steps today?',
     relationships: 'Is there someone God is inviting you to love, forgive, or encourage today?',
     bible: 'What is God revealing about His truth through this passage today?',
+    faith: 'Where is God asking you to trust Him more fully today?',
+    prayer: 'What is on your heart that you have not yet brought to God?',
+    healing: 'What broken or weary place are you bringing to God today?',
   }
   const reflectionHelperByFocus: Record<string, string> = {
     peace: 'Take a quiet moment with God',
@@ -293,6 +413,9 @@ export function getDailyWord(growthFocus?: string | null, dayOffset = 0): DailyW
     purpose: 'Pay attention to where God is leading',
     relationships: 'Reflect prayerfully on your connections',
     bible: 'Sit with what this passage reveals',
+    faith: 'Bring your honest doubt and trust to God',
+    prayer: 'Pray through this passage honestly',
+    healing: 'Come to God with what is hurting',
   }
   const reflectionPrompt = reflectionPromptByFocus[mapped] || reflectionPromptByFocus.peace
   const reflectionHelper = reflectionHelperByFocus[mapped] || reflectionHelperByFocus.peace
@@ -303,6 +426,9 @@ export function getDailyWord(growthFocus?: string | null, dayOffset = 0): DailyW
     purpose: 'Purpose',
     relationships: 'Relationships',
     bible: 'Bible',
+    faith: 'Faith',
+    prayer: 'Prayer',
+    healing: 'Healing',
   }
   const focusLabel = focusLabelByFocus[mapped] || focusLabelByFocus.peace
   const dateKey = getDateKey(dayOffset)

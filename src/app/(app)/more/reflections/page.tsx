@@ -51,19 +51,20 @@ export default function ReflectionsPage() {
       
       <div className="max-w-2xl mx-auto px-4 py-6">
         {reflections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <div className="w-16 h-16 bg-navy-800/40 border border-gold-500/20 rounded-full flex items-center justify-center mb-4">
-              <BookOpen className="w-8 h-8 text-gold-500/50" />
+          <div className="rounded-2xl border border-gold-500/20 bg-navy-800/30 p-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-gold-500/10 border border-gold-500/20 flex items-center justify-center mx-auto">
+              <BookOpen className="w-6 h-6 text-gold-400" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-50 mb-2">Nothing saved yet</h3>
-            <p className="text-slate-400 text-sm text-center max-w-sm">
-              Reflections you save from daily readings will appear here.
+            <p className="text-base font-semibold text-slate-100">No reflections saved yet</p>
+            <p className="text-sm text-slate-400">
+              Write and save reflections from your daily readings — they'll appear here.
             </p>
             <button
               onClick={() => router.push('/devotions')}
-              className="mt-6 px-4 py-2 bg-gold-500 hover:bg-gold-600 text-navy-900 rounded-lg font-medium transition-colors"
+              className="inline-flex items-center gap-2 rounded-full bg-gold-500 text-navy-900 px-4 py-2 text-sm font-semibold hover:bg-gold-600 transition-colors"
             >
-              Go to Devotions
+              <BookOpen className="w-4 h-4" />
+              Start today's devotion
             </button>
           </div>
         ) : (

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { Send, Loader2, MessageSquare, ArrowLeft, MapPin, Sparkles, BookOpen, Flag, UserX } from 'lucide-react'
+import { Send, Loader2, MessageSquare, ArrowLeft, MapPin, Sparkles, BookOpen, Flag, UserX, Wifi, WifiOff, CornerUpLeft, X, Pencil, Check } from 'lucide-react'
 import ReportModal from '@/components/ReportModal'
 
 interface DMMessage {
@@ -14,11 +14,18 @@ interface DMMessage {
   user_id: string
   content: string
   created_at: string
+  edited_at?: string | null
   type?: 'text' | 'devotion_share'
   metadata?: {
     passageRef?: string
     reflection?: string
-  }
+    reply_to?: {
+      id: string
+      content: string
+      sender_name: string
+    }
+    edited_at?: string
+  } | null
   sender: {
     id: string
     name: string
@@ -53,9 +60,15 @@ export default function DMChatPage({ params }: DMChatPageProps) {
   const [reportOpen, setReportOpen] = useState(false)
   const [blockLoading, setBlockLoading] = useState(false)
   const [blockDirection, setBlockDirection] = useState<'none' | 'blocked' | 'blocked_by'>('none')
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
+  const [replyingTo, setReplyingTo] = useState<DMMessage | null>(null)
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messageInputRef = useRef<HTMLTextAreaElement>(null)
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Softer icebreaker prompts (rotating)
   const allIcebreakers = [
@@ -92,23 +105,67 @@ export default function DMChatPage({ params }: DMChatPageProps) {
     resolveParams()
   }, [params])
 
-  // Load messages and other user info
+  // Load messages and other user info, subscribe to realtime
   useEffect(() => {
-    if (threadId && user) {
-      loadMessages()
-      loadOtherUser()
-      void loadBlockStatus()
-      // Start polling for new messages every 5 seconds
-      pollIntervalRef.current = setInterval(() => {
-        loadMessages(false) // Silent refresh
-      }, 5000)
-    }
+    if (!threadId || !user) return
+
+    loadMessages()
+    loadOtherUser()
+    void loadBlockStatus()
+
+    const channel = supabase
+      .channel(`dm_chat:${threadId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'dm_messages',
+          filter: `thread_id=eq.${threadId}`,
+        },
+        async (payload) => {
+          const raw = payload.new as any
+          // Ignore own messages — they're added optimistically on send
+          if (raw.user_id === user.id) return
+          let senderName = 'Member'
+          let senderAvatar: string | null = null
+          try {
+            const { data: profile } = await supabase
+              .from('user_profiles')
+              .select('name, avatar_url')
+              .eq('id', raw.user_id)
+              .single()
+            if (profile?.name) senderName = profile.name
+            if (profile?.avatar_url) senderAvatar = profile.avatar_url
+          } catch { /* keep defaults */ }
+
+          const newMsg: DMMessage = {
+            id: raw.id,
+            thread_id: raw.thread_id,
+            user_id: raw.user_id,
+            content: raw.content,
+            created_at: raw.created_at,
+            sender: { id: raw.user_id, name: senderName, avatar_url: senderAvatar },
+          }
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev
+            return [...prev, newMsg]
+          })
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setRealtimeStatus('connected')
+        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setRealtimeStatus('disconnected')
+        else setRealtimeStatus('connecting')
+      })
+
+    channelRef.current = channel
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-      }
+      channel.unsubscribe()
+      channelRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, user])
 
   // Scroll to bottom when messages change
@@ -224,6 +281,8 @@ export default function DMChatPage({ params }: DMChatPageProps) {
     }
 
     setSending(true)
+    const optimisticReply = replyingTo
+    setReplyingTo(null)
     try {
       // Get session token
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -239,11 +298,15 @@ export default function DMChatPage({ params }: DMChatPageProps) {
         headers['Authorization'] = `Bearer ${token}`
       }
 
+      const metadata = optimisticReply
+        ? { reply_to: { id: optimisticReply.id, content: optimisticReply.content.slice(0, 120), sender_name: optimisticReply.sender.name } }
+        : null
+
       const response = await fetch(`/api/chat/dm/${threadId}`, {
         method: 'POST',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ content: messageInput.trim() }),
+        body: JSON.stringify({ content: messageInput.trim(), metadata }),
       })
 
       if (!response.ok) {
@@ -316,6 +379,53 @@ export default function DMChatPage({ params }: DMChatPageProps) {
     }
   }
 
+  const startEdit = (message: DMMessage) => {
+    setEditingMessageId(message.id)
+    setEditContent(message.content)
+  }
+
+  const cancelEdit = () => {
+    setEditingMessageId(null)
+    setEditContent('')
+  }
+
+  const handleEditSave = async (messageId: string) => {
+    if (!editContent.trim() || editSaving) return
+    setEditSaving(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/chat/dm/${threadId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ messageId, content: editContent.trim() }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: data.message.content, edited_at: data.message.edited_at, metadata: data.message.metadata } : m))
+        cancelEdit()
+      }
+    } catch { /* ignore */ } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const startLongPress = (message: DMMessage) => {
+    pressTimerRef.current = setTimeout(() => {
+      setReplyingTo(message)
+      setTimeout(() => messageInputRef.current?.focus(), 50)
+    }, 400)
+  }
+
+  const cancelLongPress = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+  }
+
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
     const now = new Date()
@@ -339,7 +449,7 @@ export default function DMChatPage({ params }: DMChatPageProps) {
   }
 
   return (
-    <div className="h-screen bg-navy-900 flex flex-col overflow-hidden">
+    <div className="bg-navy-900 flex flex-col overflow-hidden" style={{ height: 'calc(100dvh - env(safe-area-inset-top))' }}>
       {/* Header */}
       <div className="bg-navy-800/50 backdrop-blur-sm border-b border-white/10 flex-shrink-0">
         <div className="max-w-md mx-auto px-4">
@@ -375,6 +485,20 @@ export default function DMChatPage({ params }: DMChatPageProps) {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* Realtime connection indicator */}
+              {realtimeStatus === 'connected' ? (
+                <span className="flex items-center gap-1 text-xs text-emerald-400" title="Live">
+                  <Wifi className="w-3.5 h-3.5" />
+                </span>
+              ) : realtimeStatus === 'connecting' ? (
+                <span className="flex items-center gap-1 text-xs text-amber-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                </span>
+              ) : (
+                <button onClick={() => loadMessages(false)} className="text-slate-500 hover:text-slate-300 transition-colors" title="Disconnected — tap to refresh">
+                  <WifiOff className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
                 onClick={() => setReportOpen(true)}
                 className="p-2 text-slate-400 hover:text-white transition-colors rounded-full hover:bg-white/5"
@@ -452,9 +576,20 @@ export default function DMChatPage({ params }: DMChatPageProps) {
                 (new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime()) > 300000
               
               const isDevotionShare = message.type === 'devotion_share'
-              
+              const replyTo = message.metadata?.reply_to
+
               return (
-                <div key={message.id}>
+                <div
+                  key={message.id}
+                  className="group"
+                  onMouseDown={() => startLongPress(message)}
+                  onMouseUp={cancelLongPress}
+                  onMouseLeave={cancelLongPress}
+                  onTouchStart={() => startLongPress(message)}
+                  onTouchEnd={cancelLongPress}
+                  onTouchCancel={cancelLongPress}
+                  onContextMenu={(e) => { e.preventDefault(); setReplyingTo(message); setTimeout(() => messageInputRef.current?.focus(), 50) }}
+                >
                   {showTimestamp && (
                     <div className="flex justify-center my-3">
                       <span className="text-xs text-slate-500 bg-navy-800/50 px-3 py-1 rounded-full">
@@ -536,18 +671,75 @@ export default function DMChatPage({ params }: DMChatPageProps) {
                                 : 'bg-navy-800/50 text-white border border-gold-500/30'
                             }`}
                           >
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                              {message.content}
-                            </p>
+                            {/* Quoted reply preview */}
+                            {replyTo && (
+                              <div className={`border-l-2 pl-2 mb-2 rounded-sm py-1 pr-2 ${isOwnMessage ? 'border-navy-900/40 bg-navy-900/20' : 'border-gold-500/60 bg-navy-900/30'}`}>
+                                <p className={`text-xs font-semibold truncate ${isOwnMessage ? 'text-navy-900/70' : 'text-gold-400'}`}>{replyTo.sender_name}</p>
+                                <p className={`text-xs truncate ${isOwnMessage ? 'text-navy-900/60' : 'text-slate-400'}`}>{replyTo.content}</p>
+                              </div>
+                            )}
+                            {editingMessageId === message.id ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  value={editContent}
+                                  onChange={e => setEditContent(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditSave(message.id) }
+                                    if (e.key === 'Escape') cancelEdit()
+                                  }}
+                                  className="w-full bg-navy-900/60 border border-gold-500/40 rounded-lg px-3 py-2 text-sm text-slate-50 placeholder-slate-400 focus:outline-none focus:border-gold-500 resize-none"
+                                  rows={Math.min(6, editContent.split('\n').length + 1)}
+                                  autoFocus
+                                />
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleEditSave(message.id)}
+                                    disabled={editSaving || !editContent.trim()}
+                                    className="flex items-center gap-1 px-3 py-1 bg-gold-500 text-navy-900 rounded-lg text-xs font-semibold disabled:opacity-50"
+                                  >
+                                    {editSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                    Save
+                                  </button>
+                                  <button onClick={cancelEdit} className="px-3 py-1 text-xs text-slate-400 hover:text-slate-200 transition-colors">
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                {message.content}
+                              </p>
+                            )}
                           </div>
                         )}
                         
-                        {/* Timestamp - only show on last message in group or standalone */}
-                        {(!nextMessage || nextMessage.user_id !== message.user_id || 
+                        {/* Timestamp + action buttons */}
+                        {(!nextMessage || nextMessage.user_id !== message.user_id ||
                           (new Date(nextMessage.created_at).getTime() - new Date(message.created_at).getTime()) > 120000) && (
-                          <span className={`text-xs text-slate-500 mt-0.5 px-2 ${isOwnMessage ? 'text-right' : ''}`}>
-                            {formatTime(message.created_at)}
-                          </span>
+                          <div className={`flex items-center gap-1 mt-0.5 px-2 ${isOwnMessage ? 'flex-row-reverse' : ''}`}>
+                            {message.edited_at && (
+                              <span className="text-[10px] text-slate-500 italic">edited</span>
+                            )}
+                            <span className="text-xs text-slate-500">
+                              {formatTime(message.created_at)}
+                            </span>
+                            {isOwnMessage && !isDevotionShare && editingMessageId !== message.id && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); cancelLongPress(); startEdit(message) }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-gold-400 p-0.5 rounded"
+                                title="Edit"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); cancelLongPress(); setReplyingTo(message); setTimeout(() => messageInputRef.current?.focus(), 50) }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-gold-400 p-0.5 rounded"
+                              title="Reply"
+                            >
+                              <CornerUpLeft className="w-3 h-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -560,8 +752,26 @@ export default function DMChatPage({ params }: DMChatPageProps) {
         )}
       </div>
 
+      {/* Reply Preview Bar */}
+      {replyingTo && (
+        <div className="bg-navy-800/80 border-t border-gold-500/20 px-4 py-2 flex items-center gap-3 flex-shrink-0">
+          <CornerUpLeft className="w-4 h-4 text-gold-500 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gold-400">{replyingTo.sender.name}</p>
+            <p className="text-xs text-slate-400 truncate">{replyingTo.content}</p>
+          </div>
+          <button
+            onClick={() => setReplyingTo(null)}
+            className="text-slate-500 hover:text-slate-300 transition-colors flex-shrink-0"
+            aria-label="Cancel reply"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Icebreakers (above input, only when no messages or empty input) */}
-      {messages.length > 0 && !messageInput && icebreakers.length > 0 && (
+      {messages.length > 0 && !messageInput && !replyingTo && icebreakers.length > 0 && (
         <div className="flex-shrink-0 px-4 pt-2 pb-1">
           <div className="flex flex-wrap gap-2 justify-center">
             {icebreakers.map((prompt, index) => (
@@ -603,7 +813,7 @@ export default function DMChatPage({ params }: DMChatPageProps) {
                   handleSendMessage()
                 }
               }}
-              placeholder={blockDirection === 'none' ? "Type a message..." : "Messaging is unavailable"}
+              placeholder={blockDirection !== 'none' ? "Messaging is unavailable" : replyingTo ? `Reply to ${replyingTo.sender.name}…` : "Type a message..."}
               rows={1}
               className="flex-1 bg-navy-900/70 border border-gold-500/30 rounded-2xl px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:border-gold-500 resize-none overflow-y-auto text-sm leading-6"
               style={{ maxHeight: '96px' }}

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useRouter } from 'next/navigation'
 import BackButton from '@/components/BackButton'
+import { useToast } from '@/components/ui/Toast'
 import { EventService } from '@/lib/event-service'
 import { FellowshipService } from '@/lib/fellowship-service'
 import { Event, EventRSVP, FellowshipGroup } from '@/types'
@@ -40,7 +41,8 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
   const [loading, setLoading] = useState(true)
   const [rsvpLoading, setRsvpLoading] = useState(false)
   const [showRsvpModal, setShowRsvpModal] = useState(false)
-  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'maybe' | 'not_going'>('going')
+  const toast = useToast()
+  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not_going'>('going')
   const [guestCount, setGuestCount] = useState(0)
   const [rsvpNotes, setRsvpNotes] = useState('')
   const [eventId, setEventId] = useState<string>('')
@@ -103,7 +105,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
         const userRsvpData = await EventService.getUserRSVP(id.trim(), user.id)
         setUserRsvp(userRsvpData)
         if (userRsvpData) {
-          setRsvpStatus(userRsvpData.status)
+          setRsvpStatus(userRsvpData.status === 'not_going' ? 'not_going' : 'going')
           setGuestCount(userRsvpData.guest_count || 0)
           setRsvpNotes(userRsvpData.notes || '')
         }
@@ -135,12 +137,12 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
       // For non-RSVP events, default to 'going' status
       const status = event.requires_rsvp ? rsvpStatus : 'going'
       await EventService.rsvpToEvent(eventId, user.id, status, guestCount, rsvpNotes)
-      // Refresh event data to update RSVP count and user's RSVP status
       await loadEventData(eventId)
       setShowRsvpModal(false)
+      toast({ title: status === 'going' ? "You're going!" : 'RSVP updated', variant: 'success', duration: 3000 })
     } catch (error: any) {
       console.error('RSVP error:', error)
-      alert(error.message || 'Failed to join event')
+      toast({ title: error.message || 'Failed to join event', variant: 'error', duration: 4000 })
     } finally {
       setRsvpLoading(false)
     }
@@ -157,7 +159,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
       await EventService.rsvpToEvent(eventId, user.id, 'not_going', 0, '')
       await loadEventData(eventId) // Refresh data
     } catch (error: any) {
-      alert(error.message || 'Failed to leave event')
+      toast({ title: error.message || 'Failed to leave event', variant: 'error', duration: 4000 })
     } finally {
       setRsvpLoading(false)
     }
@@ -165,7 +167,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
 
   const copyEventLink = () => {
     navigator.clipboard.writeText(window.location.href)
-    alert('Event link copied to clipboard!')
+    toast({ title: 'Link copied!', variant: 'success', duration: 2000 })
   }
 
   const getEventTypeIcon = (type: string) => {
@@ -257,6 +259,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
     )
   }
 
+  const isFull = !!event.max_attendees && event.rsvp_count >= event.max_attendees
   const { date, time } = formatEventDate(event.start_time)
   const endTime = new Date(event.end_time).toLocaleTimeString('en-US', { 
     hour: 'numeric', 
@@ -301,11 +304,6 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
             >
               <Share2 className="w-5 h-5" />
             </button>
-            {event.created_by === user?.id && (
-              <button className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                <Settings className="w-5 h-5" />
-              </button>
-            )}
           </div>
         </div>
         
@@ -474,13 +472,16 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                       )}
                     </div>
                   </div>
+                ) : isFull ? (
+                  <div className="w-full text-center py-3 px-4 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm font-medium">
+                    This event is full
+                  </div>
                 ) : (
                   <button
                     onClick={() => {
                       if (event.requires_rsvp) {
                         setShowRsvpModal(true)
                       } else {
-                        // Simple join for non-RSVP events
                         handleRsvp()
                       }
                     }}
@@ -532,33 +533,6 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
               </div>
             </div>
 
-            {/* Maybe Going */}
-            {rsvps.filter(r => r.status === 'maybe').length > 0 && (
-              <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  Maybe Going ({rsvps.filter(r => r.status === 'maybe').length})
-                </h3>
-                <div className="space-y-3">
-                  {rsvps.filter(r => r.status === 'maybe').slice(0, 3).map((rsvp) => {
-                    const userProfile = (rsvp as any).user_profile
-                    const userName = userProfile?.name || 'Unknown User'
-                    const userInitial = userName.charAt(0).toUpperCase()
-                    return (
-                    <div key={rsvp.id} className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-yellow-100 dark:bg-yellow-900 rounded-full flex items-center justify-center">
-                        <span className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
-                          {userInitial}
-                        </span>
-                      </div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        {userName}
-                      </div>
-                    </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -570,6 +544,11 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">RSVP to Event</h3>
             
             <div className="space-y-4">
+              {isFull && !userRsvp && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm text-yellow-700 dark:text-yellow-400">
+                  This event is full — no more spots available.
+                </div>
+              )}
               {/* RSVP Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -577,9 +556,8 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                 </label>
                 <div className="space-y-2">
                   {[
-                    { value: 'going', label: 'Going', color: 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400' },
-                    { value: 'maybe', label: 'Maybe', color: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900 dark:text-yellow-400' },
-                    { value: 'not_going', label: 'Not Going', color: 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400' },
+                    { value: 'going', label: 'Going' },
+                    { value: 'not_going', label: 'Not Going' },
                   ].map((option) => (
                     <label key={option.value} className="flex items-center">
                       <input
@@ -587,7 +565,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                         name="rsvpStatus"
                         value={option.value}
                         checked={rsvpStatus === option.value}
-                        onChange={(e) => setRsvpStatus(e.target.value as any)}
+                        onChange={(e) => setRsvpStatus(e.target.value as 'going' | 'not_going')}
                         className="mr-3"
                       />
                       <span className="text-sm font-medium text-gray-900 dark:text-white">
@@ -641,7 +619,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
               </button>
               <button
                 onClick={handleRsvp}
-                disabled={rsvpLoading}
+                disabled={rsvpLoading || (isFull && !userRsvp && rsvpStatus === 'going')}
                 className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {rsvpLoading ? 'Saving...' : 'Save RSVP'}

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/server-auth-utils";
 import { createClient } from "@supabase/supabase-js";
 
 // Lazy initialization of Supabase admin client (only when needed)
@@ -31,14 +32,17 @@ function getSupabaseAdmin() {
 
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { userId, answers, onboardingResult } = body;
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 400 }
-      );
+    // Ownership check — userId in body must match the authenticated user
+    if (!userId || userId !== authUser.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (!onboardingResult) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/server-auth-utils";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 /**
@@ -46,6 +47,11 @@ export interface DiscoverySearchResponse {
  */
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body: DiscoverySearchRequest = await req.json();
 
     // Validate request

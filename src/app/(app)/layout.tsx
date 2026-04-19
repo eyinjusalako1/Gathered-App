@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import BottomNavigation from '@/components/BottomNavigation'
 import OnboardingGuard from '@/components/OnboardingGuard'
+import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar'
+import StandaloneSessionGuard from '@/components/StandaloneSessionGuard'
 
 function getActiveTab(pathname: string): string {
   if (pathname.startsWith('/dashboard') || pathname === '/') return 'home'
@@ -10,12 +12,13 @@ function getActiveTab(pathname: string): string {
   if (pathname.startsWith('/chat')) return 'chat'
   if (pathname.startsWith('/fellowship')) return 'fellowships'
   if (pathname.startsWith('/devotions')) return 'devotions'
+  if (pathname.startsWith('/discover')) return 'discover'
   if (pathname.startsWith('/more') || pathname.startsWith('/profile') || pathname.startsWith('/settings')) return 'more'
   return 'home'
 }
 
-function getPathnameFromHeaders(): string {
-  const headerList = headers()
+async function getPathnameFromHeaders(): Promise<string> {
+  const headerList = await headers()
   const raw =
     headerList.get('x-pathname') ||
     headerList.get('next-url') ||
@@ -38,7 +41,7 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode
 }) {
-  const pathname = getPathnameFromHeaders()
+  const pathname = await getPathnameFromHeaders()
 
   async function handleTabChange(tab: string) {
     'use server'
@@ -53,6 +56,8 @@ export default async function AppLayout({
         return redirect('/fellowship')
       case 'devotions':
         return redirect('/devotions')
+      case 'discover':
+        return redirect('/discover')
       case 'more':
         return redirect('/more')
       default:
@@ -84,9 +89,11 @@ export default async function AppLayout({
   const activeTab = getActiveTab(pathname)
 
   return (
-    <div className="flex flex-col min-h-screen bg-beige-50 dark:bg-navy-900">
+    <div className="flex flex-col min-h-screen bg-beige-50 dark:bg-navy-900" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <ServiceWorkerRegistrar />
+      <StandaloneSessionGuard />
       <OnboardingGuard />
-      <main className="flex-1 pb-20">
+      <main className="flex-1" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
         {children}
       </main>
       <BottomNavigation activeTab={activeTab} onTabChange={handleTabChange} />

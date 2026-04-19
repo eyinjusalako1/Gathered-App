@@ -9,10 +9,9 @@ import BackButton from '@/components/BackButton'
 import { EventService } from '@/lib/event-service'
 import { FellowshipService } from '@/lib/fellowship-service'
 import { Event, FellowshipGroup } from '@/types'
-import { ActivityPlannerRequest, ActivityPlannerAPIResponse } from '@/types/activity-planner'
-import { 
-  MapPin, 
-  Calendar, 
+import {
+  MapPin,
+  Calendar,
   Clock,
   Users,
   Monitor,
@@ -23,8 +22,6 @@ import {
   Heart,
   Megaphone,
   HeartHandshake,
-  Settings,
-  Repeat
 } from 'lucide-react'
 
 export default function CreateEventPage() {
@@ -38,10 +35,6 @@ export default function CreateEventPage() {
   const [userGroups, setUserGroups] = useState<FellowshipGroup[]>([])
   const [prefillGroup, setPrefillGroup] = useState<FellowshipGroup | null>(null)
   const [loadingGroup, setLoadingGroup] = useState(false)
-  const [aiDescription, setAiDescription] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState('')
-  const [showAiSection, setShowAiSection] = useState(false)
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -77,9 +70,6 @@ export default function CreateEventPage() {
     start_time: '',
     end_time: '',
     max_attendees: '',
-    is_recurring: false,
-    recurrence_pattern: 'weekly' as Event['recurrence_pattern'],
-    recurrence_end_date: '',
     group_id: '',
     requires_rsvp: true,
     allow_guests: true,
@@ -166,9 +156,7 @@ export default function CreateEventPage() {
         start_time: formData.start_time,
         end_time: formData.end_time,
         max_attendees: formData.max_attendees ? parseInt(formData.max_attendees) : undefined,
-        is_recurring: formData.is_recurring,
-        recurrence_pattern: formData.is_recurring ? formData.recurrence_pattern : undefined,
-        recurrence_end_date: formData.is_recurring ? formData.recurrence_end_date : undefined,
+        is_recurring: false,
         group_id: formData.group_id || undefined,
         requires_rsvp: formData.requires_rsvp,
         allow_guests: formData.allow_guests,
@@ -178,6 +166,7 @@ export default function CreateEventPage() {
       }
 
       const event = await EventService.createEvent(eventData)
+      toast({ title: 'Event created!', variant: 'success', duration: 3000 })
       router.push(`/events/${event.id}`)
     } catch (err: any) {
       // Show specific error message from backend (e.g., "Only Stewards can create events")
@@ -205,66 +194,6 @@ export default function CreateEventPage() {
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }))
-  }
-
-  const handleGenerateWithAI = async () => {
-    if (!aiDescription.trim()) {
-      setAiError('Please describe the kind of hangout you want to host')
-      return
-    }
-
-    setAiLoading(true)
-    setAiError('')
-
-    try {
-      const requestBody: ActivityPlannerRequest = {
-        description: aiDescription.trim(),
-      }
-
-      const response = await fetch('/api/agents/ActivityPlanner', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to generate event suggestions')
-      }
-
-      const result: ActivityPlannerAPIResponse = await response.json()
-
-      if (!result.data) {
-        throw new Error('Invalid response from Activity Planner')
-      }
-
-      // Auto-fill form with AI suggestions
-      setFormData(prev => ({
-        ...prev,
-        title: result.data.suggested_title || prev.title,
-        description: result.data.suggested_description || prev.description,
-        max_attendees: result.data.suggested_group_size?.toString() || prev.max_attendees,
-        tags: result.data.suggested_tags?.join(', ') || prev.tags,
-        location: result.data.suggested_location_hint || prev.location,
-      }))
-
-      // Show success message
-      toast({
-        title: 'Event suggestions generated!',
-        description: 'Review and edit the form fields as needed.',
-        variant: 'success',
-        duration: 3000,
-      })
-
-      // Optionally hide the AI section after successful generation
-      setShowAiSection(false)
-    } catch (err: any) {
-      console.error('ActivityPlanner error:', err)
-      setAiError(err.message || 'Failed to generate suggestions. Please try again.')
-    } finally {
-      setAiLoading(false)
-    }
   }
 
   const getEventTypeIcon = (type: string) => {
@@ -330,75 +259,6 @@ export default function CreateEventPage() {
             >
               Remove
             </button>
-          </div>
-        )}
-
-        {/* AI Assistance Section - Only visible to Stewards */}
-        {isSteward && (
-          <div className="mb-8 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-2">
-                <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Plan with AI
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAiSection(!showAiSection)}
-                className="text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
-              >
-                {showAiSection ? 'Hide' : 'Show'}
-              </button>
-            </div>
-
-            {showAiSection && (
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="ai-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Describe the kind of hangout you want to host
-                  </label>
-                  <textarea
-                    id="ai-description"
-                    value={aiDescription}
-                    onChange={(e) => setAiDescription(e.target.value)}
-                    placeholder="e.g. A chill anime and board games night near Stratford on a Friday evening, 4–6 people, low cost."
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-none"
-                    rows={3}
-                    disabled={aiLoading}
-                  />
-                </div>
-
-                {aiError && (
-                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                    <p className="text-sm text-red-600 dark:text-red-400">{aiError}</p>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleGenerateWithAI}
-                  disabled={aiLoading || !aiDescription.trim()}
-                  className="w-full px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
-                >
-                  {aiLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>Generating...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Generate with Activity Planner</span>
-                    </>
-                  )}
-                </button>
-
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  The AI will suggest a title, description, group size, tags, and location based on your idea. You can edit all fields before submitting.
-                </p>
-              </div>
-            )}
           </div>
         )}
 
@@ -558,56 +418,6 @@ export default function CreateEventPage() {
               </div>
             </div>
 
-            {/* Recurring Event */}
-            <div className="mt-6">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  name="is_recurring"
-                  checked={formData.is_recurring}
-                  onChange={handleChange}
-                  className="mr-3"
-                />
-                <div className="flex items-center space-x-2">
-                  <Repeat className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                  <span className="font-medium text-gray-900 dark:text-white">This is a recurring event</span>
-                </div>
-              </label>
-            </div>
-
-            {formData.is_recurring && (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="recurrence_pattern" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Recurrence Pattern
-                  </label>
-                  <select
-                    id="recurrence_pattern"
-                    name="recurrence_pattern"
-                    className="input-field"
-                    value={formData.recurrence_pattern}
-                    onChange={handleChange}
-                  >
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="yearly">Yearly</option>
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="recurrence_end_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    End Date (Optional)
-                  </label>
-                  <input
-                    id="recurrence_end_date"
-                    name="recurrence_end_date"
-                    type="date"
-                    className="input-field"
-                    value={formData.recurrence_end_date}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Location & Virtual Settings */}

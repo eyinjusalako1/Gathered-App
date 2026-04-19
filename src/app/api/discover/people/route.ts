@@ -12,6 +12,7 @@ type UserProfile = {
   bio: string | null;
   interests: string[] | null;
   discoverable: boolean | null;
+  created_at: string | null;
 };
 
 type PersonResult = {
@@ -34,6 +35,35 @@ const formatDisplayName = (profile?: UserProfile | null) => {
   return profile.name?.trim() || profile.email?.split("@")[0] || "User";
 };
 
+const isRecentJoin = (createdAt: string | null): boolean => {
+  if (!createdAt) return false;
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  return new Date(createdAt).getTime() > thirtyDaysAgo;
+};
+
+async function reverseGeocodeCity(lat: number, lng: number): Promise<string> {
+  try {
+    const resp = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+      {
+        headers: { "User-Agent": "Gathered-App/1.0" },
+        signal: AbortSignal.timeout(4000),
+      }
+    );
+    if (!resp.ok) return "";
+    const geo = await resp.json();
+    return (
+      geo.address?.city ||
+      geo.address?.town ||
+      geo.address?.village ||
+      geo.address?.county ||
+      ""
+    );
+  } catch {
+    return "";
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthenticatedUser(req);
@@ -44,6 +74,17 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const query = (searchParams.get("q") || "").trim().toLowerCase();
     const cityParam = (searchParams.get("city") || "").trim();
+    const latParam = searchParams.get("lat");
+    const lngParam = searchParams.get("lng");
+
+    const lat = latParam ? parseFloat(latParam) : null;
+    const lng = lngParam ? parseFloat(lngParam) : null;
+
+    // If coordinates provided without a city, reverse-geocode to get the city
+    let resolvedCity = cityParam;
+    if (lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng) && !cityParam) {
+      resolvedCity = await reverseGeocodeCity(lat, lng);
+    }
 
     const userId = authUser.userId;
 
@@ -85,16 +126,107 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    const baseQuery = supabaseServer
-      .from("user_profiles")
-      .select("id, name, email, avatar_url, city, bio, interests, discoverable")
-      .eq("discoverable", true)
-      .neq("id", userId)
-      .limit(200);
+    const userCity = normalizeCity(currentProfile?.city);
+    const userInterests = Array.isArray(currentProfile?.interests)
+      ? currentProfile!.interests
+      : [];
+    const userInterestSet = new Set(
+      userInterests.map((interest: string) => interest.toLowerCase())
+    );
 
-    const { data: profiles, error: profilesError } = cityParam
-      ? await baseQuery.ilike("city", `%${cityParam}%`)
-      : await baseQuery;
+    // ── fetch helpers ─────────────────────────────────────────────────────────
+
+    const fetchProfiles = async (cityConstraint: string | null) => {
+      const q = supabaseServer
+        .from("user_profiles")
+        .select("id, name, email, avatar_url, city, bio, interests, discoverable, created_at")
+        .eq("discoverable", true)
+        .neq("id", userId)
+        .limit(200);
+      return cityConstraint
+        ? q.ilike("city", `%${cityConstraint}%`)
+        : q;
+    };
+
+    const scoreProfiles = (
+      profiles: UserProfile[],
+      applyCityFilter: boolean
+    ): PersonResult[] => {
+      const cityFilter = applyCityFilter ? normalizeCity(resolvedCity) : "";
+      return (profiles || [])
+        .filter((profile: UserProfile) => {
+          if (!profile?.id) return false;
+          if (excludedIds.has(profile.id)) return false;
+          if (blockedUserIds.has(profile.id)) return false;
+          if (cityFilter) {
+            const candidateCity = normalizeCity(profile.city);
+            if (!candidateCity.includes(cityFilter)) return false;
+          }
+          if (query) {
+            const matchName = profile.name?.toLowerCase().includes(query) ||
+              profile.email?.toLowerCase().includes(query);
+            const matchCity = profile.city?.toLowerCase().includes(query);
+            const matchInterest = (profile.interests || []).some((interest: string) =>
+              interest.toLowerCase().includes(query)
+            );
+            if (!matchName && !matchCity && !matchInterest) return false;
+          }
+          return true;
+        })
+        .map((profile: UserProfile) => {
+          const candidateCity = normalizeCity(profile.city);
+          const sameCity = userCity && candidateCity && candidateCity.includes(userCity);
+          const interests = Array.isArray(profile.interests) ? profile.interests : [];
+          const sharedInterests = interests.filter((interest: string) =>
+            userInterestSet.has(interest.toLowerCase())
+          );
+          const sharedCount = sharedInterests.length;
+
+          let score = 0;
+          if (sameCity) score += 2;
+          if (sharedCount > 0) score += sharedCount;
+
+          const cityName = profile.city?.trim() || null;
+          const firstShared = sharedInterests[0] || null;
+          const extraShared = sharedCount - 1;
+
+          let interestReason: string | null = null;
+          if (firstShared) {
+            interestReason = extraShared > 0
+              ? `Shares your interest in ${firstShared} and ${extraShared} other${extraShared === 1 ? "" : "s"}`
+              : `Shares your interest in ${firstShared}`;
+          }
+
+          let whySuggested: string | null = null;
+          if (sameCity && interestReason) {
+            whySuggested = `Lives in ${cityName} · ${interestReason}`;
+          } else if (sameCity && cityName) {
+            whySuggested = `Lives in ${cityName}`;
+          } else if (interestReason) {
+            whySuggested = interestReason;
+          } else if (isRecentJoin(profile.created_at)) {
+            whySuggested = "Joined recently";
+          }
+
+          return {
+            id: profile.id,
+            name: formatDisplayName(profile),
+            city: profile.city || null,
+            bio: profile.bio || null,
+            interests,
+            avatar_url: profile.avatar_url || null,
+            why_suggested: whySuggested,
+            connection_status: "none" as const,
+            score,
+          };
+        });
+    };
+
+    // ── primary fetch (city-filtered if we have a city) ───────────────────────
+
+    const { data: profiles, error: profilesError } = await fetchProfiles(
+      resolvedCity || null
+    );
 
     if (profilesError) {
       console.error("Error loading people:", profilesError);
@@ -104,69 +236,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const userCity = normalizeCity(currentProfile?.city);
-    const userInterests = Array.isArray(currentProfile?.interests)
-      ? currentProfile!.interests
-      : [];
-    const userInterestSet = new Set(
-      userInterests.map((interest: string) => interest.toLowerCase())
-    );
-    const cityFilter = normalizeCity(cityParam);
+    let results = scoreProfiles(profiles, !!resolvedCity);
 
-    const results: PersonResult[] = (profiles || [])
-      .filter((profile: UserProfile) => {
-        if (!profile?.id) return false;
-        if (excludedIds.has(profile.id)) return false;
-        if (blockedUserIds.has(profile.id)) return false;
-        if (cityFilter) {
-          const candidateCity = normalizeCity(profile.city);
-          if (!candidateCity.includes(cityFilter)) return false;
-        }
-        if (query) {
-          const matchName = profile.name?.toLowerCase().includes(query) ||
-            profile.email?.toLowerCase().includes(query);
-          const matchCity = profile.city?.toLowerCase().includes(query);
-          const matchInterest = (profile.interests || []).some((interest: string) =>
-            interest.toLowerCase().includes(query)
-          );
-          if (!matchName && !matchCity && !matchInterest) return false;
-        }
-        return true;
-      })
-      .map((profile: UserProfile) => {
-        const candidateCity = normalizeCity(profile.city);
-        const sameCity = userCity && candidateCity && candidateCity.includes(userCity);
-        const interests = Array.isArray(profile.interests) ? profile.interests : [];
-        const sharedInterests = interests.filter((interest: string) =>
-          userInterestSet.has(interest.toLowerCase())
-        );
-        const sharedCount = sharedInterests.length;
+    // ── fallback: if city filter produced nothing, retry without it ───────────
 
-        let score = 0;
-        if (sameCity) score += 2;
-        if (sharedCount > 0) score += sharedCount;
-
-        let whySuggested: string | null = null;
-        if (sameCity && sharedCount > 0) {
-          whySuggested = `Same city and ${sharedCount} shared interest${sharedCount === 1 ? "" : "s"}`;
-        } else if (sameCity) {
-          whySuggested = "Same city";
-        } else if (sharedCount > 0) {
-          whySuggested = `${sharedCount} shared interest${sharedCount === 1 ? "" : "s"}`;
-        }
-
-        return {
-          id: profile.id,
-          name: formatDisplayName(profile),
-          city: profile.city || null,
-          bio: profile.bio || null,
-          interests,
-          avatar_url: profile.avatar_url || null,
-          why_suggested: whySuggested,
-          connection_status: "none",
-          score,
-        };
-      });
+    if (results.length === 0 && resolvedCity) {
+      const { data: fallbackProfiles, error: fallbackError } = await fetchProfiles(null);
+      if (!fallbackError && fallbackProfiles) {
+        results = scoreProfiles(fallbackProfiles, false);
+      }
+    }
 
     results.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
@@ -184,4 +263,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-

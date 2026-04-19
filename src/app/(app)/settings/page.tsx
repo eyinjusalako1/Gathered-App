@@ -5,26 +5,18 @@ import { useAuth } from '@/lib/auth-context'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
-import { ArrowLeft, Bell, User, Shield, Moon, Globe, LogOut, Crown, Users, Sun, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Bell, User, Shield, Moon, Globe, LogOut, Sun, RotateCcw, MessageSquare } from 'lucide-react'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import type { Role } from '@/lib/prefs'
-
-function isValidRole(value: string | null | undefined): value is Role {
-  return value === 'disciple' || value === 'steward'
-}
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth()
   const router = useRouter()
   const { theme, setTheme } = useTheme()
-  const { profile, role, updateProfile, invalidate } = useUserProfile()
+  const { profile, invalidate } = useUserProfile()
   const toast = useToast()
-  const [isSwitchingRole, setIsSwitchingRole] = useState(false)
   const [isRestartingOnboarding, setIsRestartingOnboarding] = useState(false)
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-  const [targetRole, setTargetRole] = useState<Role | null>(null)
   const [mounted, setMounted] = useState(false)
 
   // Prevent hydration mismatch
@@ -32,82 +24,11 @@ export default function SettingsPage() {
     setMounted(true)
   }, [])
 
-  const currentRole = role || (isValidRole(profile?.role) ? profile.role : null)
-  const isDisciple = currentRole === 'disciple'
-  const isSteward = currentRole === 'steward'
-  const showDeveloperTools = isSteward
+  const showDeveloperTools = profile?.role === 'steward'
 
   const handleSignOut = async () => {
     await signOut()
     router.push('/')
-  }
-
-  const handleRoleSwitchClick = () => {
-    const newRole: Role = isDisciple ? 'steward' : 'disciple'
-    setTargetRole(newRole)
-    setShowConfirmDialog(true)
-  }
-
-  const handleConfirmRoleSwitch = async () => {
-    if (!user || !targetRole || !isValidRole(targetRole)) return
-
-    setIsSwitchingRole(true)
-    setShowConfirmDialog(false)
-
-    try {
-      // Update the role in user_profiles
-      await updateProfile({ role: targetRole })
-      
-      // Also update user_prefs for compatibility
-      const { supabase } = await import('@/lib/supabase')
-      const userType = targetRole === 'disciple' ? 'Disciple' : 'Steward'
-      await supabase
-        .from('user_prefs')
-        .upsert({
-          user_id: user.id,
-          user_type: userType,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id',
-        })
-
-      // Invalidate cache to refresh data
-      invalidate()
-      
-      // Clear profile cache to force refresh
-      localStorage.removeItem('gathered_user_profile')
-      
-      // Clear and update localStorage cache
-      localStorage.removeItem('gathered_user_prefs')
-      localStorage.setItem('gathered_user_prefs', JSON.stringify({ userType }))
-
-      toast({
-        title: 'Role updated successfully',
-        description: `You are now in ${targetRole === 'disciple' ? 'Disciple' : 'Steward'} mode. Refreshing...`,
-        variant: 'success',
-        duration: 3000,
-      })
-
-      // Force a hard refresh by reloading the page after redirect
-      setTimeout(() => {
-        router.push('/dashboard')
-        // Force refresh after navigation
-        setTimeout(() => {
-          window.location.reload()
-        }, 1000)
-      }, 500)
-    } catch (error: any) {
-      console.error('Error switching role:', error)
-      toast({
-        title: 'Failed to switch role',
-        description: error.message || 'An error occurred. Please try again.',
-        variant: 'error',
-        duration: 4000,
-      })
-    } finally {
-      setIsSwitchingRole(false)
-      setTargetRole(null)
-    }
   }
 
   const handleTabChange = (tab: string) => {
@@ -234,51 +155,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Role & Leadership */}
-          <div className="bg-white dark:bg-navy-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
-            <h3 className="font-semibold text-navy-900 dark:text-white mb-4">
-              Role & Leadership
-            </h3>
-            <div className="space-y-4">
-              {/* Current Role Badge */}
-              <div className="flex items-center space-x-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                {isSteward ? (
-                  <Crown className="w-5 h-5 text-[#F5C451]" />
-                ) : (
-                  <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                )}
-                <div className="flex-1">
-                  <div className="font-medium text-navy-900 dark:text-white">
-                    {isSteward ? 'Steward mode' : 'Disciple mode'}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    {isSteward 
-                      ? 'You can create events, manage fellowships, and lead your community.'
-                      : 'Participate in events, join fellowships, and grow in your faith journey.'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Switch Role Button */}
-              <button
-                onClick={handleRoleSwitchClick}
-                disabled={isSwitchingRole}
-                className="w-full flex items-center justify-center space-x-2 p-3 rounded-lg bg-[#F5C451] text-[#0F1433] font-medium hover:bg-[#D4AF37] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSwitchingRole ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#0F1433]"></div>
-                    <span>Switching...</span>
-                  </>
-                ) : (
-                  <span>
-                    {isDisciple ? 'Switch to Steward (leader mode)' : 'Switch to Disciple'}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-
           {/* Preferences */}
           <div className="bg-white dark:bg-navy-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
             <h3 className="font-semibold text-navy-900 dark:text-white mb-4">
@@ -361,6 +237,25 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {/* Send Feedback */}
+          <div className="bg-white dark:bg-navy-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
+            <a
+              href="https://gathered-app.com/#feedback"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              <div className="flex items-center space-x-3">
+                <MessageSquare className="w-5 h-5 text-gold-500" />
+                <div>
+                  <p className="text-gray-900 dark:text-white font-medium">Send Feedback 💬</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Help us improve Gathered</p>
+                </div>
+              </div>
+              <span className="text-sm text-gray-500 dark:text-gray-400">→</span>
+            </a>
+          </div>
+
           <div className="bg-white dark:bg-navy-800 rounded-xl p-4 shadow-sm border border-gray-200 dark:border-gray-700">
             <button
               onClick={handleSignOut}
@@ -373,38 +268,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Confirm Dialog */}
-      {showConfirmDialog && targetRole && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-navy-800 rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold text-navy-900 dark:text-white mb-2">
-              Switch to {targetRole === 'disciple' ? 'Disciple' : 'Steward'} mode?
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-              {targetRole === 'disciple'
-                ? 'You will switch to Disciple mode. You can still participate in all activities, but you won\'t be able to create events or manage fellowships.'
-                : 'You will switch to Steward (leader) mode. This allows you to create events, manage fellowships, and lead your community.'}
-            </p>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => {
-                  setShowConfirmDialog(false)
-                  setTargetRole(null)
-                }}
-                className="flex-1 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmRoleSwitch}
-                className="flex-1 px-4 py-2 rounded-lg bg-[#F5C451] text-[#0F1433] font-medium hover:bg-[#D4AF37] transition-colors"
-              >
-                Confirm Switch
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }

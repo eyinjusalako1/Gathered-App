@@ -171,11 +171,25 @@ export async function GET(req: NextRequest) {
         byId.set(church.id, withDistance);
       });
       filtered = Array.from(byId.values());
-    } else if (overpassFailed && !query) {
-      return NextResponse.json({
-        churches: [],
-        error: "Unable to reach church data source right now.",
-      });
+    } else if ((overpassFailed || elements.length === 0) && !query) {
+      // Overpass failed or returned nothing — fall back to Nominatim text search
+      try {
+        const nominatimResults = await searchChurchesByText("church", coords, safeRadiusMeters);
+        const withDistance = nominatimResults
+          .map((church) =>
+            church.lat && church.lng
+              ? { ...church, distance_miles: haversineMiles(coords.lat, coords.lng, church.lat, church.lng) }
+              : church
+          )
+          .filter((c) => c.lat && c.lng)
+          .sort((a: any, b: any) => (a.distance_miles ?? 999) - (b.distance_miles ?? 999))
+          .slice(0, 25);
+
+        cache.set(cacheKey, { data: withDistance, expiresAt: Date.now() + 1000 * 60 * 8 });
+        return NextResponse.json({ churches: withDistance });
+      } catch {
+        return NextResponse.json({ churches: [] });
+      }
     }
 
     const sorted = filtered

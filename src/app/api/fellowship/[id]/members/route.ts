@@ -11,11 +11,10 @@ import { isUserSteward } from "@/lib/server-auth";
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const groupId = resolvedParams.id;
+    const { id: groupId } = await params;
 
     if (!groupId) {
       return NextResponse.json(
@@ -44,12 +43,11 @@ export async function GET(
       .eq("status", "active")
       .single();
 
-    const isSteward = await isUserSteward(userId);
-    const isAdmin = membership?.role === "admin";
-
-    if (membershipError || (!isAdmin && !isSteward)) {
+    // Allow any active member OR a steward (stewards may not have a membership row if group creation had an RLS issue)
+    const isSteward = !membership ? await isUserSteward(userId) : false;
+    if ((membershipError || !membership) && !isSteward) {
       return NextResponse.json(
-        { error: "You must be an admin of this group or a steward to view members" },
+        { error: "You must be a member of this group to view members" },
         { status: 403 }
       );
     }
@@ -57,19 +55,7 @@ export async function GET(
     // Get all members (active and pending)
     const { data: members, error: membersError } = await supabaseServer
       .from("group_memberships")
-      .select(`
-        id,
-        user_id,
-        role,
-        status,
-        joined_at,
-        invited_by,
-        user:user_id (
-          id,
-          email,
-          user_metadata
-        )
-      `)
+      .select("id, user_id, role, status, joined_at, invited_by")
       .eq("group_id", groupId)
       .in("status", ["active", "pending"])
       .order("joined_at", { ascending: false });
@@ -109,8 +95,7 @@ export async function GET(
         invited_by: member.invited_by,
         user: {
           id: member.user_id,
-          name: profile?.name || member.user?.user_metadata?.name || `User ${member.user_id.substring(0, 8)}`,
-          email: member.user?.email || "",
+          name: profile?.name || `Member`,
           avatar_url: profile?.avatar_url || null,
         },
       };

@@ -15,7 +15,7 @@ export const FOUNDER_MESSAGE_CONTENT = {
     'How to report bugs/feedback: Tap “Send feedback” below or email us anytime',
     'Invite friends via group invites to help us grow the community',
   ],
-  feedbackEmail: 'mailto:founder@gathered.app?subject=Gathered%20Beta%20Feedback',
+  feedbackEmail: 'https://gathered-app.com/#feedback',
 }
 
 interface FounderMessageModalProps {

@@ -33,18 +33,21 @@ export default function EventsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
   const [filterVirtual, setFilterVirtual] = useState<string>('all')
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
+  const [error, setError] = useState(false)
 
   useEffect(() => {
     loadEvents()
   }, [])
 
   const loadEvents = async () => {
+    setError(false)
+    setLoading(true)
     try {
       const data = await EventService.getUpcomingEvents(user?.id, 50)
       setEvents(data)
-    } catch (error) {
-      console.error('Error loading events:', error)
+    } catch (err) {
+      console.error('Error loading events:', err)
+      setError(true)
     } finally {
       setLoading(false)
     }
@@ -124,6 +127,19 @@ export default function EventsPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Couldn't load events</h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">Something went wrong. Please try again.</p>
+          <button onClick={loadEvents} className="btn-primary">Try again</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       {/* Header */}
@@ -137,7 +153,7 @@ export default function EventsPage() {
               </p>
             </div>
             
-            {user && (
+            {isSteward && (
               <button
                 onClick={() => router.push('/events/create')}
                 className="btn-primary flex items-center space-x-2"
@@ -199,29 +215,6 @@ export default function EventsPage() {
               </select>
             </div>
 
-            {/* View Mode */}
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-primary-100 text-primary-600 dark:bg-primary-900 dark:text-primary-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                }`}
-              >
-                List
-              </button>
-              <button
-                onClick={() => setViewMode('calendar')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'calendar'
-                    ? 'bg-primary-100 text-primary-600 dark:bg-primary-900 dark:text-primary-400'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                }`}
-              >
-                Calendar
-              </button>
-            </div>
           </div>
         </div>
 

@@ -5,7 +5,6 @@ import { supabaseServer } from "@/lib/supabaseServer";
 type UserProfile = {
   id: string;
   name: string | null;
-  email: string | null;
   avatar_url: string | null;
   city: string | null;
   bio: string | null;
@@ -14,11 +13,7 @@ type UserProfile = {
 
 const formatDisplayName = (profile?: UserProfile | null) => {
   if (!profile) return "User";
-  return (
-    profile.name?.trim() ||
-    profile.email?.split("@")[0] ||
-    "User"
-  );
+  return profile.name?.trim() || "User";
 };
 
 /**
@@ -63,7 +58,7 @@ export async function GET(req: NextRequest) {
     if (otherUserIds.length > 0) {
       const { data: profileData, error: profileError } = await supabaseServer
         .from("user_profiles")
-        .select("id, name, email, avatar_url, city, bio, interests")
+        .select("id, name, avatar_url, city, bio, interests")
         .in("id", otherUserIds);
 
       if (profileError) {

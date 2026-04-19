@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
@@ -12,6 +12,22 @@ export const metadata: Metadata = {
   title: 'Gathered - Connect with Fellow Believers',
   description: 'A Christian social app to help believers find fellowship, join Bible studies, and grow in faith together.',
   keywords: 'Christian, fellowship, Bible study, prayer, community, faith',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Gathered',
+  },
+  icons: {
+    apple: '/apple-touch-icon.png',
+  },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#D4AF37',
 }
 
 export default function RootLayout({

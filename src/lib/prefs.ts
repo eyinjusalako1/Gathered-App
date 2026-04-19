@@ -41,6 +41,12 @@ export type UserProfile = {
   } | null
   profile_complete?: boolean | null
   growth_focus?: string | null
+  growth_intent?: string | null
+  reflection_preference?: string | null
+  engagement_frequency?: string | null
+  life_stage?: string | null
+  church_background?: string | null
+  gathering_intentions?: string[] | null
   onboarding_completed?: boolean | null
   onboarding_version?: number | null
   discoverable?: boolean | null

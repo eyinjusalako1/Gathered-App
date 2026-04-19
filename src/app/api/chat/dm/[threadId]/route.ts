@@ -72,7 +72,7 @@ export async function GET(
     // Get messages
     const { data: messages, error: messagesError } = await supabaseServer
       .from("dm_messages")
-      .select("id, thread_id, user_id, content, created_at")
+      .select("id, thread_id, user_id, content, metadata, created_at")
       .eq("thread_id", threadId)
       .order("created_at", { ascending: true });
 
@@ -161,6 +161,7 @@ export async function GET(
         thread_id: msg.thread_id,
         user_id: msg.user_id,
         content: msg.content,
+        metadata: msg.metadata || null,
         created_at: msg.created_at,
         sender: {
           id: profile.id || msg.user_id,
@@ -196,7 +197,7 @@ export async function POST(
   try {
     const { threadId } = await Promise.resolve(params);
     const body = await req.json();
-    const { content } = body;
+    const { content, metadata } = body;
 
     if (!threadId) {
       return NextResponse.json(
@@ -264,8 +265,9 @@ export async function POST(
         thread_id: threadId,
         user_id: userId,
         content: content.trim(),
+        ...(metadata ? { metadata } : {}),
       })
-      .select("id, thread_id, user_id, content, created_at")
+      .select("id, thread_id, user_id, content, metadata, created_at")
       .single();
 
     if (insertError) {
@@ -304,6 +306,7 @@ export async function POST(
       thread_id: newMessage.thread_id,
       user_id: newMessage.user_id,
       content: newMessage.content,
+      metadata: newMessage.metadata || null,
       created_at: newMessage.created_at,
       sender: {
         id: profile?.id || newMessage.user_id,
@@ -321,6 +324,66 @@ export async function POST(
       { error: error.message || "Internal server error" },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * PATCH /api/chat/dm/[threadId]
+ * Edit an existing DM message. Only the original sender may edit.
+ * Body: { messageId: string, content: string }
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ threadId: string }> }
+) {
+  try {
+    const { threadId } = await params;
+    const body = await req.json();
+    const { messageId, content } = body;
+
+    if (!messageId || !content?.trim()) {
+      return NextResponse.json({ error: "messageId and content are required" }, { status: 400 });
+    }
+
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = authUser.userId;
+
+    // Verify sender owns the message and it belongs to this thread
+    const { data: existing, error: fetchErr } = await supabaseServer
+      .from("dm_messages")
+      .select("id, user_id, metadata")
+      .eq("id", messageId)
+      .eq("thread_id", threadId)
+      .single();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    }
+    if (existing.user_id !== userId) {
+      return NextResponse.json({ error: "You can only edit your own messages" }, { status: 403 });
+    }
+
+    const now = new Date().toISOString();
+    const updatedMetadata = { ...(existing.metadata || {}), edited_at: now };
+
+    const { data: updated, error: updateErr } = await supabaseServer
+      .from("dm_messages")
+      .update({ content: content.trim(), edited_at: now, metadata: updatedMetadata })
+      .eq("id", messageId)
+      .select("id, thread_id, user_id, content, metadata, created_at, edited_at")
+      .single();
+
+    if (updateErr) {
+      return NextResponse.json({ error: "Failed to update message" }, { status: 500 });
+    }
+
+    return NextResponse.json({ message: updated });
+  } catch (error: any) {
+    console.error("Error in PATCH /api/chat/dm/[threadId]:", error);
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }
 

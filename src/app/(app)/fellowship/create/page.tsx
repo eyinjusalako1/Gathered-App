@@ -5,623 +5,386 @@ import { useAuth } from '@/lib/auth-context'
 import { useRouter } from 'next/navigation'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useToast } from '@/components/ui/Toast'
-import BackButton from '@/components/BackButton'
 import { FellowshipService } from '@/lib/fellowship-service'
-import { FellowshipGroup } from '@/types'
-import { GroupPlannerRequest, GroupPlannerAPIResponse } from '@/types/group-planner'
-import { 
-  MapPin, 
-  Users, 
-  Calendar, 
-  Tag, 
-  Lock, 
-  Globe,
-  Heart,
-  BookOpen,
-  Sparkles
-} from 'lucide-react'
+import TagChipSelector from '@/components/fellowship/TagChipSelector'
+import {
+  getNameSuggestionsForTags,
+  getDescriptionStartersForTags,
+  getTagByValue,
+} from '@/lib/fellowship/focusTags'
+import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from 'lucide-react'
+
+type Visibility = 'open' | 'request' | 'invite'
+
+const MAX_MEMBERS_OPTIONS = [
+  { value: '', label: 'No limit' },
+  { value: '12', label: '12 members' },
+  { value: '25', label: '25 members' },
+  { value: '50', label: '50 members' },
+]
 
 export default function CreateGroupPage() {
   const { user } = useAuth()
   const router = useRouter()
   const toast = useToast()
   const { profile, isSteward, isLoading: profileLoading } = useUserProfile()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [showAiSection, setShowAiSection] = useState(false)
-  const [aiGoal, setAiGoal] = useState('')
-  const [aiLocationHint, setAiLocationHint] = useState('')
-  const [aiAudience, setAiAudience] = useState('')
-  const [aiMeetingFrequency, setAiMeetingFrequency] = useState('weekly')
-  const [aiTone, setAiTone] = useState<'chill' | 'structured' | 'deep' | 'social'>('chill')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState('')
 
-  // Redirect if user is not a steward
+  // Redirect non-stewards
   useEffect(() => {
-    if (!profileLoading && profile) {
-      if (!isSteward) {
-        toast({
-          title: 'Access Restricted',
-          description: 'Only Stewards can create groups.',
-          variant: 'error',
-          duration: 4000,
-        })
-        router.replace('/fellowship')
-      }
+    if (!profileLoading && profile && !isSteward) {
+      toast({ title: 'Access Restricted', description: 'Only Stewards can create groups.', variant: 'error', duration: 4000 })
+      router.replace('/fellowship')
     }
   }, [profile, isSteward, profileLoading, router, toast])
-  
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    group_type: 'fellowship' as FellowshipGroup['group_type'],
-    is_private: false,
-    location: '',
-    meeting_schedule: '',
-    meeting_location: '',
-    max_members: '',
-    tags: '',
-  })
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const [step, setStep] = useState(1)
+  const [creating, setCreating] = useState(false)
+
+  // Wizard state
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [visibility, setVisibility] = useState<Visibility>('open')
+  const [maxMembers, setMaxMembers] = useState('')
+
+  const nameSuggestions = getNameSuggestionsForTags(selectedTags)
+  const descriptionStarters = getDescriptionStartersForTags(selectedTags)
+
+  const canProceedStep1 = selectedTags.length > 0
+  const canProceedStep2 = name.trim().length >= 3
+  const canProceedStep3 = description.trim().length >= 10
+
+  const handleCreate = async () => {
     if (!user) return
-
-    setLoading(true)
-    setError('')
-
+    setCreating(true)
     try {
-      const groupData = {
-        name: formData.name,
-        description: formData.description,
-        group_type: formData.group_type,
-        is_private: formData.is_private,
-        location: formData.location || undefined,
-        meeting_schedule: formData.meeting_schedule || undefined,
-        meeting_location: formData.meeting_location || undefined,
-        max_members: formData.max_members ? parseInt(formData.max_members) : undefined,
-        tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0),
+      const group = await FellowshipService.createGroup({
+        name: name.trim(),
+        description: description.trim(),
+        group_type: 'fellowship',
+        is_private: visibility !== 'open',
+        tags: selectedTags,
+        max_members: maxMembers ? parseInt(maxMembers) : undefined,
         created_by: user.id,
         is_active: true,
-      }
-
-      const group = await FellowshipService.createGroup(groupData)
+      })
+      toast({ title: 'Group created!', description: `${group.name} is ready.`, variant: 'success' })
       router.push(`/fellowship/${group.id}`)
     } catch (err: any) {
-      setError(err.message || 'Failed to create group')
-    } finally {
-      setLoading(false)
+      toast({ title: 'Error', description: err.message || 'Failed to create group', variant: 'error' })
+      setCreating(false)
     }
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
-    }))
-  }
-
-  const handleGenerateWithAI = async () => {
-    if (!aiGoal.trim()) {
-      setAiError('Please describe the group you want to start')
-      return
-    }
-
-    setAiLoading(true)
-    setAiError('')
-
-    try {
-      const requestBody: GroupPlannerRequest = {
-        goal: aiGoal.trim(),
-        location_hint: aiLocationHint.trim() || undefined,
-        audience: aiAudience.trim() || undefined,
-        meeting_frequency: aiMeetingFrequency || undefined,
-        tone: aiTone
-      }
-
-      const response = await fetch('/api/agents/GroupPlanner', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to generate group setup')
-      }
-
-      const result: GroupPlannerAPIResponse = await response.json()
-
-      if (!result.data) {
-        throw new Error('Invalid response from Group Planner')
-      }
-
-      const data = result.data
-
-      // Quality safeguards
-      // Deduplicate tags (case-insensitive)
-      const uniqueTags = Array.from(new Set(
-        data.suggested_tags.map(tag => tag.toLowerCase().trim())
-      )).filter(tag => tag.length > 0)
-
-      // Ensure name isn't empty
-      const safeName = data.suggested_name?.trim() || `Fellowship Group - ${new Date().toLocaleDateString()}`
-
-      // Truncate short description to 120 chars
-      const safeShortDesc = data.suggested_short_description 
-        ? data.suggested_short_description.substring(0, 120).trim()
-        : ''
-
-      // Auto-fill form with AI suggestions
-      setFormData(prev => ({
-        ...prev,
-        name: safeName,
-        description: data.suggested_full_description || prev.description,
-        location: aiLocationHint || prev.location,
-        meeting_schedule: data.suggested_meeting_schedule || prev.meeting_schedule,
-        tags: uniqueTags.join(', '),
-        is_private: data.suggested_privacy === 'private'
-      }))
-
-      // Show success message
-      toast({
-        title: 'Group setup generated!',
-        description: 'Review and edit the form fields as needed.',
-        variant: 'success',
-        duration: 3000,
-      })
-
-      // Optionally hide the AI section after successful generation
-      setShowAiSection(false)
-    } catch (err: any) {
-      console.error('GroupPlanner error:', err)
-      setAiError(err.message || 'Failed to generate group setup. Please try again.')
-    } finally {
-      setAiLoading(false)
-    }
-  }
-
-  const getGroupTypeIcon = (type: string) => {
-    switch (type) {
-      case 'bible_study':
-        return <BookOpen className="w-5 h-5" />
-      case 'prayer_group':
-        return <Sparkles className="w-5 h-5" />
-      default:
-        return <Heart className="w-5 h-5" />
-    }
-  }
-
-  // Show loading while checking role
   if (profileLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
-        </div>
+      <div className="min-h-screen bg-navy-900 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-gold-500 animate-spin" />
       </div>
     )
   }
 
-  // Don't render form if user is not a steward
-  if (!isSteward) {
-    return null
-  }
+  const stepLabels = ['Focus', 'Name', 'Description', 'Review']
 
   return (
-    <>
-      <BackButton label="Create Fellowship Group" />
+    <div className="min-h-screen bg-navy-900 text-slate-50">
+      {/* Header */}
+      <div className="bg-navy-800/50 border-b border-white/10 px-4 py-3 sticky top-0 z-10">
+        <div className="max-w-2xl mx-auto flex items-center gap-4">
+          <button
+            onClick={() => step === 1 ? router.push('/fellowship') : setStep(s => s - 1)}
+            className="text-slate-400 hover:text-slate-50 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-base font-semibold text-slate-50">Create a Fellowship Group</h1>
+            <p className="text-xs text-slate-400">Step {step} of 4 — {stepLabels[step - 1]}</p>
+          </div>
+        </div>
+      </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* AI Assistance Section - Only visible to Stewards */}
-        {isSteward && (
-          <div className="mb-8 bg-gradient-to-br from-navy-800/40 to-indigo-800/40 border border-gold-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-2">
-                <Sparkles className="w-5 h-5 text-gold-500" />
-                <h2 className="text-lg font-semibold text-slate-50">
-                  Create with AI
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAiSection(!showAiSection)}
-                className="text-sm text-gold-500 hover:text-gold-400 transition-colors"
-              >
-                {showAiSection ? 'Hide' : 'Show'}
-              </button>
+      {/* Step Progress */}
+      <div className="max-w-2xl mx-auto px-4 pt-4">
+        <div className="flex gap-1.5">
+          {[1, 2, 3, 4].map(s => (
+            <div
+              key={s}
+              className={`h-1 flex-1 rounded-full transition-all ${s <= step ? 'bg-gold-500' : 'bg-white/10'}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-4 py-8">
+
+        {/* ── STEP 1: Focus Tags ── */}
+        {step === 1 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-50 mb-2">What is this group about?</h2>
+              <p className="text-slate-400 text-sm">
+                Pick one or more focus areas. These help people find your group and shape the suggestions you&apos;ll get.
+              </p>
             </div>
-
-            {showAiSection && (
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="ai-goal" className="block text-sm font-medium text-slate-200 mb-2">
-                    Describe the group you want to start *
-                  </label>
-                  <textarea
-                    id="ai-goal"
-                    value={aiGoal}
-                    onChange={(e) => setAiGoal(e.target.value)}
-                    placeholder="e.g., a chill weekly young adults bible study in Dartford on Saturdays, welcoming new believers"
-                    className="w-full px-4 py-3 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500 resize-none"
-                    rows={3}
-                    disabled={aiLoading}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label htmlFor="ai-location" className="block text-sm font-medium text-slate-200 mb-2">
-                      Location (optional)
-                    </label>
-                    <input
-                      id="ai-location"
-                      type="text"
-                      value={aiLocationHint}
-                      onChange={(e) => setAiLocationHint(e.target.value)}
-                      placeholder="e.g., Dartford, Kent"
-                      className="w-full px-4 py-2 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-                      disabled={aiLoading}
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="ai-audience" className="block text-sm font-medium text-slate-200 mb-2">
-                      Audience (optional)
-                    </label>
-                    <input
-                      id="ai-audience"
-                      type="text"
-                      value={aiAudience}
-                      onChange={(e) => setAiAudience(e.target.value)}
-                      placeholder="e.g., young adults, new believers"
-                      className="w-full px-4 py-2 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-                      disabled={aiLoading}
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="ai-frequency" className="block text-sm font-medium text-slate-200 mb-2">
-                      Meeting Frequency
-                    </label>
-                    <select
-                      id="ai-frequency"
-                      value={aiMeetingFrequency}
-                      onChange={(e) => setAiMeetingFrequency(e.target.value)}
-                      className="w-full px-4 py-2 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-                      disabled={aiLoading}
-                    >
-                      <option value="weekly">Weekly</option>
-                      <option value="biweekly">Biweekly</option>
-                      <option value="monthly">Monthly</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="ai-tone" className="block text-sm font-medium text-slate-200 mb-2">
-                    Tone
-                  </label>
-                  <select
-                    id="ai-tone"
-                    value={aiTone}
-                    onChange={(e) => setAiTone(e.target.value as 'chill' | 'structured' | 'deep' | 'social')}
-                    className="w-full px-4 py-2 border border-white/10 rounded-lg bg-navy-900/60 text-slate-50 focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-                    disabled={aiLoading}
-                  >
-                    <option value="chill">Chill</option>
-                    <option value="structured">Structured</option>
-                    <option value="deep">Deep</option>
-                    <option value="social">Social</option>
-                  </select>
-                </div>
-
-                {aiError && (
-                  <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
-                    <p className="text-sm text-red-400">{aiError}</p>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleGenerateWithAI}
-                  disabled={aiLoading || !aiGoal.trim()}
-                  className="w-full px-4 py-3 bg-gold-500 hover:bg-gold-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-navy-900 font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
-                >
-                  {aiLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-navy-900"></div>
-                      <span>Creating your group setup...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Generate group setup</span>
-                    </>
-                  )}
-                </button>
-
-                <p className="text-xs text-slate-400">
-                  The AI will suggest a name, descriptions, meeting schedule, tags, privacy setting, rules, and welcome message. You can edit all fields before submitting.
-                </p>
-              </div>
+            <TagChipSelector selected={selectedTags} onChange={setSelectedTags} maxSelections={4} />
+            {selectedTags.length > 0 && (
+              <p className="text-xs text-slate-500">{selectedTags.length} selected (max 4)</p>
             )}
+            <button
+              onClick={() => setStep(2)}
+              disabled={!canProceedStep1}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gold-500 text-navy-900 px-6 py-3 text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Continue <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-              <p className="text-red-600 dark:text-red-400">{error}</p>
+        {/* ── STEP 2: Name ── */}
+        {step === 2 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-50 mb-2">Give it a name</h2>
+              <p className="text-slate-400 text-sm">Keep it short, clear, and welcoming.</p>
             </div>
-          )}
 
-          {/* Basic Information */}
-          <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Basic Information</h2>
-            
-            <div className="space-y-6">
-              {/* Group Name */}
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Group Name *
-                </label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  className="input-field"
-                  placeholder="e.g., Downtown Bible Study Group"
-                  value={formData.name}
-                  onChange={handleChange}
-                />
-              </div>
+            <div>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={60}
+                autoFocus
+                placeholder="Group name…"
+                className="w-full bg-navy-800/60 border border-white/10 rounded-xl px-4 py-3 text-slate-50 text-base placeholder-slate-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50 transition-colors"
+              />
+              <p className="text-xs text-slate-500 mt-1 text-right">{name.length}/60</p>
+            </div>
 
-              {/* Group Type */}
+            {nameSuggestions.length > 0 && (
               <div>
-                <label htmlFor="group_type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Group Type *
-                </label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {[
-                    { value: 'bible_study', label: 'Bible Study', icon: <BookOpen className="w-4 h-4" /> },
-                    { value: 'prayer_group', label: 'Prayer Group', icon: <Sparkles className="w-4 h-4" /> },
-                    { value: 'fellowship', label: 'Fellowship', icon: <Heart className="w-4 h-4" /> },
-                    { value: 'youth_group', label: 'Youth Group', icon: <Users className="w-4 h-4" /> },
-                    { value: 'senior_group', label: 'Senior Group', icon: <Users className="w-4 h-4" /> },
-                    { value: 'mixed', label: 'Mixed Ages', icon: <Users className="w-4 h-4" /> },
-                  ].map((type) => (
-                    <label key={type.value} className="relative">
-                      <input
-                        type="radio"
-                        name="group_type"
-                        value={type.value}
-                        checked={formData.group_type === type.value}
-                        onChange={handleChange}
-                        className="sr-only"
-                      />
-                      <div className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                        formData.group_type === type.value
-                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                      }`}>
-                        <div className="flex items-center space-x-2">
-                          {type.icon}
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {type.label}
-                          </span>
-                        </div>
-                      </div>
-                    </label>
+                <p className="text-xs text-slate-400 mb-2 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-gold-500" /> Suggestions — tap to use
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {nameSuggestions.map(suggestion => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => setName(suggestion)}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
+                        name === suggestion
+                          ? 'bg-gold-500 text-navy-900 border-gold-500'
+                          : 'bg-navy-800/60 text-slate-300 border-white/10 hover:border-gold-500/40 hover:text-slate-100'
+                      }`}
+                    >
+                      {suggestion}
+                    </button>
                   ))}
                 </div>
               </div>
+            )}
 
-              {/* Description */}
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Description *
-                </label>
-                <textarea
-                  id="description"
-                  name="description"
-                  rows={4}
-                  required
-                  className="input-field"
-                  placeholder="Describe your group's purpose, activities, and what members can expect..."
-                  value={formData.description}
-                  onChange={handleChange}
-                />
-              </div>
-
-              {/* Privacy Setting */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  Privacy Setting
-                </label>
-                <div className="space-y-3">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="is_private"
-                      value="false"
-                      checked={!formData.is_private}
-                      onChange={handleChange}
-                      className="mr-3"
-                    />
-                    <div className="flex items-center space-x-2">
-                      <Globe className="w-5 h-5 text-green-600" />
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">Public Group</div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          Anyone can find and join your group
-                        </div>
-                      </div>
-                    </div>
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="is_private"
-                      value="true"
-                      checked={formData.is_private}
-                      onChange={handleChange}
-                      className="mr-3"
-                    />
-                    <div className="flex items-center space-x-2">
-                      <Lock className="w-5 h-5 text-orange-600" />
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">Private Group</div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          Members must request to join and be approved
-                        </div>
-                      </div>
-                    </div>
-                  </label>
-                </div>
-              </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(1)}
+                className="flex-1 rounded-xl border border-white/15 text-slate-300 px-6 py-3 text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setStep(3)}
+                disabled={!canProceedStep2}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gold-500 text-navy-900 px-6 py-3 text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Continue <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
+        )}
 
-          {/* Location & Meeting Details */}
-          <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Location & Meeting Details</h2>
-            
-            <div className="space-y-6">
-              {/* General Location */}
-              <div>
-                <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  General Location
-                </label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    id="location"
-                    name="location"
-                    type="text"
-                    className="input-field pl-10"
-                    placeholder="e.g., Downtown Seattle, WA"
-                    value={formData.location}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-
-              {/* Meeting Schedule */}
-              <div>
-                <label htmlFor="meeting_schedule" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Meeting Schedule
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    id="meeting_schedule"
-                    name="meeting_schedule"
-                    type="text"
-                    className="input-field pl-10"
-                    placeholder="e.g., Every Sunday at 10:00 AM"
-                    value={formData.meeting_schedule}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-
-              {/* Meeting Location */}
-              <div>
-                <label htmlFor="meeting_location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Specific Meeting Location
-                </label>
-                <input
-                  id="meeting_location"
-                  name="meeting_location"
-                  type="text"
-                  className="input-field"
-                  placeholder="e.g., First Baptist Church, Room 201"
-                  value={formData.meeting_location}
-                  onChange={handleChange}
-                />
-              </div>
-
-              {/* Max Members */}
-              <div>
-                <label htmlFor="max_members" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Maximum Members (Optional)
-                </label>
-                <div className="relative">
-                  <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    id="max_members"
-                    name="max_members"
-                    type="number"
-                    min="2"
-                    className="input-field pl-10"
-                    placeholder="Leave empty for unlimited"
-                    value={formData.max_members}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Tags */}
-          <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Tags</h2>
-            
+        {/* ── STEP 3: Description ── */}
+        {step === 3 && (
+          <div className="space-y-6">
             <div>
-              <label htmlFor="tags" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Tags (Optional)
-              </label>
-              <div className="relative">
-                <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  id="tags"
-                  name="tags"
-                  type="text"
-                  className="input-field pl-10"
-                  placeholder="e.g., young adults, prayer, scripture study, community service"
-                  value={formData.tags}
-                  onChange={handleChange}
-                />
+              <h2 className="text-2xl font-bold text-slate-50 mb-2">Describe the group</h2>
+              <p className="text-slate-400 text-sm">Help people know what to expect when they join.</p>
+            </div>
+
+            <div>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={5}
+                maxLength={400}
+                autoFocus
+                placeholder="What will people do together? Who is it for? What&apos;s the vibe?"
+                className="w-full bg-navy-800/60 border border-white/10 rounded-xl px-4 py-3 text-slate-50 placeholder-slate-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/50 transition-colors resize-none"
+              />
+              <p className="text-xs text-slate-500 mt-1 text-right">{description.length}/400</p>
+            </div>
+
+            {descriptionStarters.length > 0 && (
+              <div>
+                <p className="text-xs text-slate-400 mb-2 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-gold-500" /> Starter sentences — tap to use, then edit
+                </p>
+                <div className="space-y-2">
+                  {descriptionStarters.map(starter => (
+                    <button
+                      key={starter}
+                      type="button"
+                      onClick={() => setDescription(starter)}
+                      className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
+                        description === starter
+                          ? 'border-gold-500/60 bg-gold-500/10 text-slate-100'
+                          : 'border-white/10 bg-navy-800/40 text-slate-400 hover:border-gold-500/30 hover:text-slate-200'
+                      }`}
+                    >
+                      {starter}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                Separate tags with commas. Tags help others find your group.
-              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(2)}
+                className="flex-1 rounded-xl border border-white/15 text-slate-300 px-6 py-3 text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setStep(4)}
+                disabled={!canProceedStep3}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gold-500 text-navy-900 px-6 py-3 text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Continue <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
+        )}
 
-          {/* Submit Button */}
-          <div className="flex justify-end space-x-4">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary px-8 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Creating Group...' : 'Create Group'}
-            </button>
+        {/* ── STEP 4: Review ── */}
+        {step === 4 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-50 mb-2">Review & launch</h2>
+              <p className="text-slate-400 text-sm">Set who can join, then create your group.</p>
+            </div>
+
+            {/* Review Card */}
+            <div className="bg-navy-800/60 border border-white/10 rounded-2xl p-5 space-y-4">
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Name</p>
+                <p className="text-base font-semibold text-slate-50">{name}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Description</p>
+                <p className="text-sm text-slate-300">{description}</p>
+              </div>
+              {selectedTags.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Focus</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTags.map(value => {
+                      const tag = getTagByValue(value)
+                      return tag ? (
+                        <span key={value} className="inline-flex items-center gap-1 px-2.5 py-1 bg-gold-500/10 border border-gold-500/30 rounded-full text-xs text-gold-400">
+                          {tag.emoji} {tag.label}
+                        </span>
+                      ) : null
+                    })}
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={() => setStep(1)}
+                className="text-xs text-gold-500 hover:text-gold-400 underline"
+              >
+                Edit details
+              </button>
+            </div>
+
+            {/* Visibility */}
+            <div>
+              <p className="text-sm font-medium text-slate-200 mb-3">Who can join?</p>
+              <div className="space-y-2">
+                {([
+                  { value: 'open', label: 'Open', description: 'Anyone can join instantly — the group is fully public.' },
+                  { value: 'request', label: 'Request to Join', description: 'People can find the group but need your approval to join.' },
+                  { value: 'invite', label: 'Invite Only', description: 'New members can only join via a shared invite link.' },
+                ] as { value: Visibility; label: string; description: string }[]).map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setVisibility(opt.value)}
+                    className={`w-full text-left p-4 rounded-xl border transition-all ${
+                      visibility === opt.value
+                        ? 'border-gold-500/60 bg-gold-500/10'
+                        : 'border-white/10 bg-navy-800/40 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                        visibility === opt.value ? 'border-gold-500 bg-gold-500' : 'border-slate-500'
+                      }`}>
+                        {visibility === opt.value && <div className="w-1.5 h-1.5 bg-navy-900 rounded-full" />}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-slate-50">{opt.label}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">{opt.description}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Max Members */}
+            <div>
+              <p className="text-sm font-medium text-slate-200 mb-3">Member limit</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {MAX_MEMBERS_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setMaxMembers(opt.value)}
+                    className={`py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      maxMembers === opt.value
+                        ? 'border-gold-500/60 bg-gold-500/10 text-gold-500'
+                        : 'border-white/10 bg-navy-800/40 text-slate-300 hover:border-white/20'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setStep(3)}
+                className="flex-1 rounded-xl border border-white/15 text-slate-300 px-6 py-3 text-sm font-medium hover:bg-white/5 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={creating}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gold-500 text-navy-900 px-6 py-3 text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {creating
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Creating…</span></>
+                  : <><Check className="w-4 h-4" /><span>Create Group</span></>
+                }
+              </button>
+            </div>
           </div>
-        </form>
+        )}
       </div>
-    </>
+    </div>
   )
 }
-
-
-
-
-
-
-
-

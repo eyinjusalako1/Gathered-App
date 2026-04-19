@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Church, Loader2, LocateFixed, MapPin, Search, Users } from 'lucide-react'
+import { Church, Loader2, LocateFixed, Lock, MapPin, Search, Users } from 'lucide-react'
 import BottomSheet from '@/components/ui/BottomSheet'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
@@ -20,6 +20,19 @@ interface PersonResult {
   connection_status?: 'none' | 'pending' | 'accepted'
 }
 
+interface GroupResult {
+  id: string
+  name: string
+  description: string | null
+  group_type: string
+  location: string | null
+  member_count: number
+  max_members: number | null
+  tags: string[]
+  is_private: boolean
+  join_status: 'none' | 'pending' | 'member'
+}
+
 interface GeoResult {
   display_name: string
   lat: string
@@ -30,10 +43,12 @@ interface GeoResult {
   postcode?: string | null
 }
 
+type ActiveTab = 'people' | 'groups' | 'churches'
+
 interface SearchModalProps {
   isOpen: boolean
   onClose: () => void
-  initialTab?: 'people' | 'churches'
+  initialTab?: ActiveTab
 }
 
 const RADIUS_OPTIONS = [1, 2, 5, 10, 25]
@@ -46,13 +61,15 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
   const { profile } = useUserProfile()
   const profileCity = profile?.city?.trim() || null
 
-  const [activeTab, setActiveTab] = useState<'people' | 'churches'>(initialTab || 'people')
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab || 'people')
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [people, setPeople] = useState<PersonResult[]>([])
+  const [groups, setGroups] = useState<GroupResult[]>([])
   const [churches, setChurches] = useState<ChurchType[]>([])
   const [loading, setLoading] = useState(false)
   const [connectingId, setConnectingId] = useState<string | null>(null)
+  const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null)
   const [churchStats, setChurchStats] = useState<Record<string, ChurchStats>>({})
   const [settingChurchId, setSettingChurchId] = useState<string | null>(null)
   const [currentMyChurchId, setCurrentMyChurchId] = useState<string | null>(null)
@@ -166,11 +183,9 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
 
   useEffect(() => {
     if (!isOpen) return
-    if (activeTab === 'people') {
-      void loadPeople()
-    } else {
-      void loadChurches()
-    }
+    if (activeTab === 'people') void loadPeople()
+    else if (activeTab === 'groups') void loadGroups()
+    else void loadChurches()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, activeTab, locationMode, resolvedLocation, radiusMiles, coords, sortOption, isOpen])
 
@@ -190,9 +205,7 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
 
   const handleLocationMode = (mode: 'near_me' | 'my_city' | 'custom') => {
     setLocationMode(mode)
-    if (mode === 'near_me') {
-      handleNearMe()
-    }
+    if (mode === 'near_me') handleNearMe()
   }
 
   const handleNearMe = () => {
@@ -243,15 +256,10 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
     setLoading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        setPeople([])
-        return
-      }
+      if (!session) { setPeople([]); return }
 
       const headers: HeadersInit = { 'Content-Type': 'application/json' }
-      if (session.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`
-      }
+      if (session.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
 
       const params = new URLSearchParams()
       if (debouncedQuery) params.set('q', debouncedQuery)
@@ -267,10 +275,7 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
         credentials: 'include',
         headers,
       })
-
-      if (!response.ok) {
-        throw new Error('Unable to load people')
-      }
+      if (!response.ok) throw new Error('Unable to load people')
 
       const data = await response.json()
       let peopleResults = (data.people || []) as PersonResult[]
@@ -295,10 +300,45 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
     }
   }
 
-  const loadChurches = async () => {
-    if (locationMode === 'custom' && debouncedLocation && !geoResolved) {
-      return
+  const loadGroups = async () => {
+    setLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setGroups([]); return }
+
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      }
+
+      const params = new URLSearchParams()
+      if (debouncedQuery) params.set('q', debouncedQuery)
+      // Groups use city text filter only — no lat/lng radius
+      const locationParams = getLocationParams()
+      if ('city' in locationParams && locationParams.city) {
+        params.set('city', locationParams.city)
+      } else if ('lat' in locationParams) {
+        // near_me mode: pass city from profile as fallback since groups have no coords
+        if (profileCity) params.set('city', profileCity)
+      }
+
+      const response = await fetch(`/api/discover/groups?${params.toString()}`, {
+        credentials: 'include',
+        headers,
+      })
+      if (!response.ok) throw new Error('Unable to load groups')
+
+      const data = await response.json()
+      setGroups(data.groups || [])
+    } catch (error: any) {
+      toast({ title: error.message || 'Failed to load groups', variant: 'error' })
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const loadChurches = async () => {
+    if (locationMode === 'custom' && debouncedLocation && !geoResolved) return
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -313,26 +353,22 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
       }
 
       const response = await fetch(`/api/discover/churches?${params.toString()}`)
-      if (!response.ok) {
-        throw new Error('Unable to load churches')
-      }
+      if (!response.ok) throw new Error('Unable to load churches')
       const data = await response.json()
-      if (data.error) {
-        toast({ title: data.error, variant: 'error' })
-      }
+      if (data.error) toast({ title: data.error, variant: 'error' })
 
       let churchResults = (data.churches || []) as ChurchType[]
       if (sortOption === 'best') {
         churchResults = [...churchResults].sort((a, b) => a.name.localeCompare(b.name))
       } else {
         churchResults = [...churchResults].sort((a, b) => {
-          if (a.distance_miles === null || a.distance_miles === undefined) return 1
-          if (b.distance_miles === null || b.distance_miles === undefined) return -1
+          if (a.distance_miles == null) return 1
+          if (b.distance_miles == null) return -1
           return a.distance_miles - b.distance_miles
         })
       }
       setChurches(churchResults)
-      await loadChurchStats(churchResults.map((church) => church.id))
+      await loadChurchStats(churchResults.map((c) => c.id))
     } catch (error: any) {
       toast({ title: error.message || 'Failed to load churches', variant: 'error' })
     } finally {
@@ -341,11 +377,7 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
   }
 
   const loadChurchStats = async (ids: string[]) => {
-    if (ids.length === 0) {
-      setChurchStats({})
-      setCurrentMyChurchId(null)
-      return
-    }
+    if (ids.length === 0) { setChurchStats({}); setCurrentMyChurchId(null); return }
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) return
@@ -353,9 +385,7 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`,
       }
-      const response = await fetch(`/api/churches/stats?ids=${encodeURIComponent(ids.join(','))}`, {
-        headers,
-      })
+      const response = await fetch(`/api/churches/stats?ids=${encodeURIComponent(ids.join(','))}`, { headers })
       if (!response.ok) return
       const data = await response.json()
       const statsList = (data.stats || []) as ChurchStats[]
@@ -363,9 +393,7 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
       let myChurchId: string | null = null
       statsList.forEach((stat) => {
         nextStats[stat.id] = stat
-        if (stat.is_my_church) {
-          myChurchId = stat.id
-        }
+        if (stat.is_my_church) myChurchId = stat.id
       })
       setChurchStats(nextStats)
       setCurrentMyChurchId(myChurchId)
@@ -389,9 +417,7 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
         body: JSON.stringify({ recipientId: person.id }),
       })
       const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to send connection request')
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to send connection request')
       toast({ title: 'Connection request sent', variant: 'success' })
       setPeople((prev) =>
         prev.map((p) => (p.id === person.id ? { ...p, connection_status: 'pending' } : p))
@@ -400,6 +426,47 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
       toast({ title: error.message || 'Failed to send request', variant: 'error' })
     } finally {
       setConnectingId(null)
+    }
+  }
+
+  const handleJoinGroup = async (group: GroupResult) => {
+    if (joiningGroupId) return
+    setJoiningGroupId(group.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) throw new Error('Not authenticated')
+
+      if (group.is_private) {
+        const { error } = await supabase.from('join_requests').insert([{
+          group_id: group.id,
+          user_id: session.user.id,
+          status: 'pending',
+        }])
+        if (error) throw error
+        toast({ title: 'Join request sent', variant: 'success' })
+      } else {
+        const { error } = await supabase.from('group_memberships').insert([{
+          group_id: group.id,
+          user_id: session.user.id,
+          role: 'member',
+          status: 'active',
+          joined_at: new Date().toISOString(),
+        }])
+        if (error) throw error
+        toast({ title: `Joined ${group.name}`, variant: 'success' })
+      }
+
+      setGroups((prev) =>
+        prev.map((g) =>
+          g.id === group.id
+            ? { ...g, join_status: group.is_private ? 'pending' : 'member', member_count: g.member_count + (group.is_private ? 0 : 1) }
+            : g
+        )
+      )
+    } catch (error: any) {
+      toast({ title: error.message || 'Failed to join group', variant: 'error' })
+    } finally {
+      setJoiningGroupId(null)
     }
   }
 
@@ -425,23 +492,14 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
         body: JSON.stringify({
           action: 'set',
           church: {
-            id: church.id,
-            name: church.name,
-            lat: church.lat,
-            lng: church.lng,
-            address: church.address,
-            city: church.city,
-            postcode: church.postcode,
-            denomination: church.denomination,
-            website: church.website,
-            source: church.source,
+            id: church.id, name: church.name, lat: church.lat, lng: church.lng,
+            address: church.address, city: church.city, postcode: church.postcode,
+            denomination: church.denomination, website: church.website, source: church.source,
           },
         }),
       })
       const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to set church')
-      }
+      if (!response.ok) throw new Error(data.error || 'Unable to set church')
       toast({ title: 'Updated your church', variant: 'success' })
       await loadChurchStats(churches.map((item) => item.id))
     } catch (error: any) {
@@ -451,30 +509,37 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
     }
   }
 
-  const emptyStateCopy = useMemo(() => {
-    if (loading) return null
-    if (activeTab === 'people') {
-      return {
-        title: debouncedQuery ? 'No people found' : 'No people to show yet',
-        description: debouncedQuery
-          ? 'Try a different name or interest.'
-          : 'Try searching by name or city to discover new connections.',
-      }
-    }
-    const location = locationLabel || 'your area'
-    return {
-      title: `No churches found within ${radiusMiles} miles of ${location}`,
-      description: 'Try increasing the radius or searching a new location.',
-    }
-  }, [activeTab, debouncedQuery, loading, locationLabel, radiusMiles])
-
   const handleIncreaseRadius = () => {
     const currentIndex = RADIUS_OPTIONS.indexOf(radiusMiles)
     if (currentIndex === -1 || currentIndex === RADIUS_OPTIONS.length - 1) return
     setRadiusMiles(RADIUS_OPTIONS[currentIndex + 1])
   }
 
-  const isPeople = activeTab === 'people'
+  const searchPlaceholder =
+    activeTab === 'people'
+      ? 'Search by name, city, interests…'
+      : activeTab === 'groups'
+      ? 'Search by name, type, location…'
+      : 'Search churches by name, city, postcode…'
+
+  const emptyTitle =
+    activeTab === 'people'
+      ? debouncedQuery ? 'No people found' : 'No people to show yet'
+      : activeTab === 'groups'
+      ? debouncedQuery ? 'No groups found' : 'No groups to show yet'
+      : `No churches found within ${radiusMiles} miles of ${locationLabel || 'your area'}`
+
+  const emptyDescription =
+    activeTab === 'people'
+      ? debouncedQuery ? 'Try a different name or interest.' : 'Search by name or city to find believers near you.'
+      : activeTab === 'groups'
+      ? debouncedQuery ? 'Try a different name, type, or location.' : 'Search by name or location to find a group.'
+      : 'Try increasing the radius or searching a new location.'
+
+  const resultCount =
+    activeTab === 'people' ? people.length
+    : activeTab === 'groups' ? groups.length
+    : churches.length
 
   return (
     <BottomSheet
@@ -488,58 +553,52 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
       }
     >
       <div className="space-y-4">
+        {/* Search input */}
         <div className="flex items-center gap-2 bg-navy-800/60 border border-white/10 rounded-2xl px-4 py-3">
-          <Search className="w-5 h-5 text-gold-400" />
+          <Search className="w-5 h-5 text-gold-400 shrink-0" />
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={
-              isPeople
-                ? 'Search people by name, city, interests…'
-                : 'Search churches by name, city, postcode…'
-            }
-            className="flex-1 bg-transparent text-white placeholder-slate-400 focus:outline-none"
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="flex-1 bg-transparent text-white placeholder-slate-400 focus:outline-none text-sm"
           />
         </div>
 
-        <div className="flex gap-2 bg-navy-800/50 rounded-xl p-1">
-          <button
-            onClick={() => {
-              setActiveTab('people')
-              setSortOption('best')
-            }}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 ${
-              isPeople
-                ? 'bg-gold-500 text-navy-900'
-                : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            People
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('churches')
-              setSortOption('nearest')
-            }}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 ${
-              !isPeople
-                ? 'bg-gold-500 text-navy-900'
-                : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Church className="w-4 h-4" />
-            Churches
-          </button>
+        {/* Tab bar */}
+        <div className="flex gap-1 bg-navy-800/50 rounded-xl p-1">
+          {(
+            [
+              { id: 'people', label: 'People', icon: Users },
+              { id: 'groups', label: 'Groups', icon: Users },
+              { id: 'churches', label: 'Churches', icon: Church },
+            ] as const
+          ).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => {
+                setActiveTab(id)
+                setSortOption(id === 'churches' ? 'nearest' : 'best')
+              }}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                activeTab === id
+                  ? 'bg-gold-500 text-navy-900'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
+        {/* Location + filters bar (hidden for groups when no city) */}
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={() => setFiltersOpen(true)}
             className="flex-1 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-gold-500/40 hover:text-gold-200"
           >
-            {locationLabel} • {radiusMiles} mi
+            {locationLabel || 'Any location'}
+            {activeTab !== 'groups' && ` • ${radiusMiles} mi`}
           </button>
           <button
             type="button"
@@ -550,18 +609,17 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
           </button>
         </div>
 
+        {/* Loading skeletons */}
         {loading && (
           <div className="space-y-3">
-            {[0, 1, 2].map((item) => (
-              <div
-                key={item}
-                className="h-24 rounded-2xl bg-navy-800/40 border border-white/10 animate-pulse"
-              />
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-24 rounded-2xl bg-navy-800/40 border border-white/10 animate-pulse" />
             ))}
           </div>
         )}
 
-        {!loading && isPeople && (
+        {/* People results */}
+        {!loading && activeTab === 'people' && (
           <div className="space-y-4">
             {people.map((person) => (
               <div
@@ -569,7 +627,7 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
                 className="bg-navy-900/40 border border-white/10 rounded-2xl p-4 hover:border-gold-500/60 hover:shadow-[0_0_25px_rgba(212,175,55,0.25)] transition-all duration-200"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gold-500/20 border border-gold-500/30 overflow-hidden flex items-center justify-center text-sm font-bold text-gold-100">
+                  <div className="w-12 h-12 rounded-full bg-gold-500/20 border border-gold-500/30 overflow-hidden flex items-center justify-center text-sm font-bold text-gold-100 shrink-0">
                     {person.avatar_url ? (
                       <img src={person.avatar_url} alt={person.name} className="w-full h-full object-cover" />
                     ) : (
@@ -579,29 +637,27 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <h4 className="text-lg font-semibold text-white truncate">{person.name}</h4>
-                        {person.city && (
-                          <p className="text-xs text-slate-400">{person.city}</p>
-                        )}
+                        <h4 className="text-sm font-semibold text-white truncate">{person.name}</h4>
+                        {person.city && <p className="text-xs text-slate-400">{person.city}</p>}
                       </div>
                       <button
                         type="button"
                         onClick={() => handleConnect(person)}
                         disabled={connectingId === person.id || person.connection_status === 'pending'}
-                        className="rounded-full bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-900 hover:bg-gold-600 disabled:opacity-60"
+                        className="rounded-full bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-900 hover:bg-gold-600 disabled:opacity-60 shrink-0"
                       >
                         {person.connection_status === 'pending' ? 'Pending' : 'Connect'}
                       </button>
                     </div>
                     {person.bio && (
-                      <p className="mt-2 text-sm text-slate-300 line-clamp-1">{person.bio}</p>
+                      <p className="mt-1.5 text-xs text-slate-300 line-clamp-1">{person.bio}</p>
                     )}
                     {person.interests?.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {person.interests.slice(0, 4).map((interest) => (
                           <span
                             key={interest}
-                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200"
+                            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] text-slate-200"
                           >
                             {interest}
                           </span>
@@ -609,9 +665,7 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
                       </div>
                     )}
                     {person.why_suggested && (
-                      <p className="mt-3 text-xs text-gold-200">
-                        {person.why_suggested}
-                      </p>
+                      <p className="mt-2 text-xs text-gold-200">{person.why_suggested}</p>
                     )}
                   </div>
                 </div>
@@ -620,7 +674,84 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
           </div>
         )}
 
-        {!loading && !isPeople && (
+        {/* Groups results */}
+        {!loading && activeTab === 'groups' && (
+          <div className="space-y-3">
+            {groups.map((group) => (
+              <div
+                key={group.id}
+                className="bg-navy-900/40 border border-white/10 rounded-2xl p-4 hover:border-gold-500/40 transition-all duration-200"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-sm font-semibold text-white">{group.name}</h4>
+                      {group.is_private && (
+                        <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+                      )}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-slate-300">
+                        {group.group_type}
+                      </span>
+                      {group.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-gold-400" />
+                          {group.location}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {group.member_count}
+                        {group.max_members ? ` / ${group.max_members}` : ''} members
+                      </span>
+                    </div>
+                    {group.description && (
+                      <p className="mt-2 text-xs text-slate-400 line-clamp-2">{group.description}</p>
+                    )}
+                    {group.tags.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {group.tags.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-slate-300"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="shrink-0">
+                    {group.join_status === 'member' ? (
+                      <span className="rounded-full border border-gold-500/40 bg-gold-500/10 px-3 py-1.5 text-xs font-semibold text-gold-300">
+                        Joined
+                      </span>
+                    ) : group.join_status === 'pending' ? (
+                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-400">
+                        Requested
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleJoinGroup(group)}
+                        disabled={joiningGroupId === group.id}
+                        className="rounded-full bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-900 hover:bg-gold-600 disabled:opacity-60 flex items-center gap-1"
+                      >
+                        {joiningGroupId === group.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : group.is_private ? 'Request' : 'Join'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Churches results */}
+        {!loading && activeTab === 'churches' && (
           <div className="space-y-3">
             {churches.map((church) => (
               <ChurchCard
@@ -634,14 +765,13 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
           </div>
         )}
 
-        {!loading && emptyStateCopy && (isPeople ? people.length === 0 : churches.length === 0) && (
-          <div className="py-10 text-center text-slate-300 space-y-3">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">{emptyStateCopy.title}</h3>
-              <p className="text-sm text-slate-400">{emptyStateCopy.description}</p>
-            </div>
-            {!isPeople && (
-              <div className="flex flex-col gap-2">
+        {/* Empty state */}
+        {!loading && resultCount === 0 && (
+          <div className="py-10 text-center space-y-3">
+            <h3 className="text-base font-semibold text-white">{emptyTitle}</h3>
+            <p className="text-sm text-slate-400">{emptyDescription}</p>
+            {activeTab === 'churches' && (
+              <div className="flex flex-col gap-2 pt-2">
                 <button
                   type="button"
                   onClick={handleIncreaseRadius}
@@ -652,117 +782,92 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
                 <button
                   type="button"
                   onClick={() => handleLocationMode('custom')}
-                  className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-gold-500/30 hover:text-gold-100"
+                  className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-gold-500/30"
                 >
                   Try another location
                 </button>
-                <a
-                  href="#"
-                  className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-gold-500/30 hover:text-gold-100"
-                >
-                  Suggest a church
-                </a>
               </div>
             )}
           </div>
         )}
       </div>
 
-      <BottomSheet
-        isOpen={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        title="Filters"
-      >
+      {/* Filters sheet */}
+      <BottomSheet isOpen={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters">
         <div className="space-y-4">
           <div className="flex gap-2 bg-navy-800/30 rounded-xl p-1">
-            <button
-              onClick={() => handleLocationMode('near_me')}
-              className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 ${
-                locationMode === 'near_me'
-                  ? 'bg-gold-500 text-navy-900'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <LocateFixed className="w-4 h-4" />
-              Near me
-            </button>
-            <button
-              onClick={() => handleLocationMode('my_city')}
-              className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 ${
-                locationMode === 'my_city'
-                  ? 'bg-gold-500 text-navy-900'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <MapPin className="w-4 h-4" />
-              My city
-            </button>
-            <button
-              onClick={() => handleLocationMode('custom')}
-              className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 ${
-                locationMode === 'custom'
-                  ? 'bg-gold-500 text-navy-900'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <Search className="w-4 h-4" />
-              Custom
-            </button>
+            {(['near_me', 'my_city', 'custom'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => handleLocationMode(mode)}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 ${
+                  locationMode === mode ? 'bg-gold-500 text-navy-900' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                {mode === 'near_me' && <LocateFixed className="w-3.5 h-3.5" />}
+                {mode === 'my_city' && <MapPin className="w-3.5 h-3.5" />}
+                {mode === 'custom' && <Search className="w-3.5 h-3.5" />}
+                {mode === 'near_me' ? 'Near me' : mode === 'my_city' ? 'My city' : 'Custom'}
+              </button>
+            ))}
           </div>
 
           {locationMode === 'custom' && (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <input
                 value={customLocation}
-                onChange={(event) => setCustomLocation(event.target.value)}
-                placeholder="Type a city or postcode (e.g., Dartford, DA1)"
+                onChange={(e) => setCustomLocation(e.target.value)}
+                placeholder="Type a city or postcode…"
                 className="w-full bg-navy-800/50 border border-white/10 rounded-xl px-4 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-gold-500/60"
               />
-              <div className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400">
                 {geoLoading ? 'Resolving location…' : `Searching near ${locationLabel}`}
-              </div>
+              </p>
             </div>
           )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-300">
-                Radius: {radiusMiles} miles {isPeople ? '(beta)' : ''}
-              </p>
-              <select
-                value={sortOption}
-                onChange={(event) => setSortOption(event.target.value as 'best' | 'nearest')}
-                className="bg-navy-800/60 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200"
-              >
-                {isPeople ? (
-                  <>
-                    <option value="best">Best match</option>
-                    <option value="nearest">Nearest (beta)</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="nearest">Nearest</option>
-                    <option value="best">Best match (name)</option>
-                  </>
-                )}
-              </select>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {RADIUS_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setRadiusMiles(option)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                    radiusMiles === option
-                      ? 'border-gold-500 bg-gold-500/20 text-gold-100'
-                      : 'border-white/10 bg-white/5 text-slate-200'
-                  }`}
+          {/* Radius — not shown for groups tab */}
+          {activeTab !== 'groups' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-300">
+                  Radius: {radiusMiles} miles{activeTab === 'people' ? ' (beta)' : ''}
+                </p>
+                <select
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value as 'best' | 'nearest')}
+                  className="bg-navy-800/60 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200"
                 >
-                  {option} mi
-                </button>
-              ))}
+                  {activeTab === 'people' ? (
+                    <>
+                      <option value="best">Best match</option>
+                      <option value="nearest">Nearest (beta)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="nearest">Nearest</option>
+                      <option value="best">Best match (name)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {RADIUS_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => setRadiusMiles(option)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      radiusMiles === option
+                        ? 'border-gold-500 bg-gold-500/20 text-gold-100'
+                        : 'border-white/10 bg-white/5 text-slate-200'
+                    }`}
+                  >
+                    {option} mi
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             type="button"
@@ -776,4 +881,3 @@ export default function SearchModal({ isOpen, onClose, initialTab }: SearchModal
     </BottomSheet>
   )
 }
-

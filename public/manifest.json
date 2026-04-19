@@ -1,0 +1,24 @@
+{
+  "name": "Gathered",
+  "short_name": "Gathered",
+  "description": "Connect with fellow believers. Daily devotions, fellowship groups, and real community.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1433",
+  "theme_color": "#D4AF37",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

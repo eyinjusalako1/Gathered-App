@@ -143,7 +143,9 @@ export default function PersonalizationSettingsPage() {
             For now, reach out and we&apos;ll help.
           </p>
           <a
-            href="mailto:support@gathered.app?subject=Delete%20my%20Gathered%20account"
+            href="https://gathered-app.com/#feedback"
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center justify-center w-full bg-white/10 border border-[#D4AF37]/30 text-white font-semibold py-3 rounded-xl hover:bg-white/20 transition-colors"
           >
             Contact support

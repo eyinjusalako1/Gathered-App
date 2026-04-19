@@ -1,15 +1,24 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { getAuthenticatedUser } from '@/lib/server-auth-utils'
 import { gamificationService, GamificationService } from '@/lib/gamification-service'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { userId, fellowshipId, activityType } = body
+    const authUser = await getAuthenticatedUser(request)
+    if (!authUser?.userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
-    if (!userId || !fellowshipId || !activityType) {
+    // userId is always derived from the auth token — never from the request body
+    const userId = authUser.userId
+
+    const body = await request.json()
+    const { fellowshipId, activityType } = body
+
+    if (!fellowshipId || !activityType) {
       return NextResponse.json(
-        { error: 'Missing required fields: userId, fellowshipId, activityType' },
+        { error: 'Missing required fields: fellowshipId, activityType' },
         { status: 400 }
       )
     }

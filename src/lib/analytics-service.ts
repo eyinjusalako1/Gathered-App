@@ -80,7 +80,7 @@ export class AnalyticsService {
       supabase.from('event_rsvps').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'going'),
       supabase.from('study_sessions').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('completed', true),
       supabase.from('memory_verses').select('*', { count: 'exact', head: true }).eq('user_id', userId),
-      supabase.from('profiles').select('created_at').eq('id', userId).single()
+      supabase.from('user_profiles').select('created_at').eq('id', userId).single()
     ])
 
     const accountAge = userProfile.data ? 
@@ -135,14 +135,14 @@ export class AnalyticsService {
       weeklyPosts,
       monthlyPosts
     ] = await Promise.all([
-      supabase.from('profiles').select('*', { count: 'exact', head: true }),
-      supabase.from('profiles').select('*', { count: 'exact', head: true }).gte('updated_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+      supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
+      supabase.from('user_profiles').select('*', { count: 'exact', head: true }).gte('updated_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
       supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_active', true),
       supabase.from('fellowship_groups').select('*', { count: 'exact', head: true }).eq('is_active', true),
       supabase.from('events').select('*', { count: 'exact', head: true }).eq('is_active', true),
       supabase.from('post_comments').select('*', { count: 'exact', head: true }).eq('is_active', true),
-      supabase.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
-      supabase.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+      supabase.from('user_profiles').select('*', { count: 'exact', head: true }).gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+      supabase.from('user_profiles').select('*', { count: 'exact', head: true }).gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
       supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_active', true).gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
       supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_active', true).gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
     ])
