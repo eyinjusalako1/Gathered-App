@@ -25,7 +25,7 @@ export default function BackButton({ fallbackHref = '/dashboard', label }: BackB
   }
 
   return (
-    <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+    <div className="sticky z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" style={{ top: 'env(safe-area-inset-top)' }}>
       <div className="max-w-md mx-auto px-4">
         <div className="flex items-center py-3">
           <button

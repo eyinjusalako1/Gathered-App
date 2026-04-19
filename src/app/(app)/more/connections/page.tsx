@@ -222,7 +222,7 @@ export default function ConnectionsPage() {
   return (
     <div className="min-h-screen bg-navy-900 pb-20">
       {/* Header */}
-      <div className="bg-navy-800/50 border-b border-white/10 sticky top-0 z-40">
+      <div className="bg-navy-800/50 border-b border-white/10 sticky z-40" style={{ top: 'env(safe-area-inset-top)' }}>
         <div className="max-w-md mx-auto px-4">
           <div className="flex items-center justify-between py-4">
             <button

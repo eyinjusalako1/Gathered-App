@@ -104,7 +104,7 @@ export default function SettingsPage() {
   return (
     <>
       {/* Header */}
-      <div className="bg-white dark:bg-navy-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
+      <div className="bg-white dark:bg-navy-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky z-40" style={{ top: 'env(safe-area-inset-top)' }}>
         <div className="max-w-md mx-auto px-4">
           <div className="flex items-center justify-between py-4">
             <div className="flex items-center space-x-3">

@@ -89,7 +89,7 @@ export default function CreateGroupPage() {
   return (
     <div className="min-h-screen bg-navy-900 text-slate-50">
       {/* Header */}
-      <div className="bg-navy-800/50 border-b border-white/10 px-4 py-3 sticky top-0 z-10">
+      <div className="bg-navy-800/50 border-b border-white/10 px-4 py-3 sticky z-10" style={{ top: 'env(safe-area-inset-top)' }}>
         <div className="max-w-2xl mx-auto flex items-center gap-4">
           <button
             onClick={() => step === 1 ? router.push('/fellowship') : setStep(s => s - 1)}
