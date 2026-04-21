@@ -313,39 +313,6 @@ export async function POST(
 
     const displayName = profile?.name?.trim() || profile?.email?.split("@")[0] || "Member";
 
-    // Fire push notifications to all other active members (non-blocking)
-    void (async () => {
-      try {
-        const [{ data: group }, { data: otherMembers }] = await Promise.all([
-          supabaseServer
-            .from("fellowship_groups")
-            .select("name")
-            .eq("id", groupId)
-            .single(),
-          supabaseServer
-            .from("group_memberships")
-            .select("user_id")
-            .eq("group_id", groupId)
-            .eq("status", "active")
-            .neq("user_id", userId),
-        ]);
-
-        const recipientIds = (otherMembers || []).map((m: any) => m.user_id);
-        if (recipientIds.length === 0) return;
-
-        const groupName = group?.name || "Group";
-        const bodyText = content.trim().slice(0, 100);
-
-        await sendPushToUsers(recipientIds, {
-          title: displayName,
-          body: `${groupName}: ${bodyText}`,
-          url: `/chat/${groupId}`,
-        });
-      } catch {
-        // Push errors must never affect the response
-      }
-    })();
-
     const messageWithProfile = {
       ...newMessage,
       user: {
@@ -354,6 +321,39 @@ export async function POST(
         avatar_url: profile?.avatar_url || null,
       },
     };
+
+    // Send push notifications to all other active members.
+    // Awaited before returning so Vercel doesn't terminate the function early.
+    // Errors are logged but never affect the HTTP response.
+    try {
+      const [{ data: group }, { data: otherMembers }] = await Promise.all([
+        supabaseServer
+          .from("fellowship_groups")
+          .select("name")
+          .eq("id", groupId)
+          .single(),
+        supabaseServer
+          .from("group_memberships")
+          .select("user_id")
+          .eq("group_id", groupId)
+          .eq("status", "active")
+          .neq("user_id", userId),
+      ]);
+
+      const recipientIds = (otherMembers || []).map((m: any) => m.user_id);
+
+      if (recipientIds.length > 0) {
+        const groupName = group?.name || "Group";
+        const bodyText = content.trim().slice(0, 100);
+        await sendPushToUsers(recipientIds, {
+          title: displayName,
+          body: `${groupName}: ${bodyText}`,
+          url: `/chat/${groupId}`,
+        });
+      }
+    } catch (pushErr: any) {
+      console.error("[push] Group chat notification failed:", pushErr?.message);
+    }
 
     return NextResponse.json({ message: messageWithProfile }, { status: 201 });
   } catch (error: any) {
