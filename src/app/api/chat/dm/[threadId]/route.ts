@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/server-auth-utils";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getBlockDirection } from "@/lib/blocking";
+import { sendPushToUser } from "@/lib/notifications";
 
 /**
  * GET /api/chat/dm/[threadId]
@@ -297,6 +298,20 @@ export async function POST(
                      "User";
       } catch {
         displayName = profile?.email?.split('@')[0] || "User";
+      }
+    }
+
+    // Send push notification to the other participant.
+    // Awaited before returning so Vercel doesn't terminate the function early.
+    if (otherUserId) {
+      try {
+        await sendPushToUser(otherUserId, {
+          title: displayName || 'New message',
+          body: content.trim().slice(0, 100),
+          url: `/chat/dm/${threadId}`,
+        })
+      } catch (pushErr: any) {
+        console.error('[push] DM notification failed:', pushErr?.message)
       }
     }
 

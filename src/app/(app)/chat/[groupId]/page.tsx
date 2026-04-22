@@ -44,6 +44,9 @@ export default function GroupChatPage({ params }: GroupChatPageProps) {
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Profile cache — populated from initial loadMessages so realtime handler
+  // never needs to fetch profiles via the anon key (which is blocked by RLS).
+  const profileCacheRef = useRef<Map<string, { name: string; avatar_url: string | null }>>(new Map())
 
   // Resolve params
   useEffect(() => {
@@ -69,15 +72,27 @@ export default function GroupChatPage({ params }: GroupChatPageProps) {
           const raw = payload.new as any
           let senderName = 'Member'
           let senderAvatar: string | null = null
-          try {
-            const { data: profile } = await supabase
-              .from('user_profiles')
-              .select('name, avatar_url')
-              .eq('id', raw.user_id)
-              .single()
-            if (profile?.name) senderName = profile.name
-            if (profile?.avatar_url) senderAvatar = profile.avatar_url
-          } catch { /* keep defaults */ }
+
+          // 1. Check cache (populated from loadMessages — uses service role, unaffected by RLS)
+          const cached = profileCacheRef.current.get(raw.user_id)
+          if (cached) {
+            senderName = cached.name
+            senderAvatar = cached.avatar_url
+          } else {
+            // 2. Not in cache — fetch via /api/users/[id] (service role, not anon key)
+            try {
+              const { data: { session } } = await supabase.auth.getSession()
+              const res = await fetch(`/api/users/${raw.user_id}`, {
+                headers: { Authorization: session?.access_token ? `Bearer ${session.access_token}` : '' },
+              })
+              if (res.ok) {
+                const { user: profile } = await res.json()
+                senderName = profile?.name?.trim() || 'Member'
+                senderAvatar = profile?.avatar_url || null
+                profileCacheRef.current.set(raw.user_id, { name: senderName, avatar_url: senderAvatar })
+              }
+            } catch { /* keep defaults */ }
+          }
 
           const newMessage: GroupChatMessage = {
             id: raw.id,
@@ -145,7 +160,18 @@ export default function GroupChatPage({ params }: GroupChatPageProps) {
       }
 
       const data = await response.json()
-      setMessages(data.messages || [])
+      const msgs: GroupChatMessage[] = data.messages || []
+      // Populate profile cache so the realtime handler can resolve names
+      // without hitting user_profiles directly via the anon key (blocked by RLS).
+      msgs.forEach((m) => {
+        if (m.user?.id && m.user.name && m.user.name !== 'Member') {
+          profileCacheRef.current.set(m.user.id, {
+            name: m.user.name,
+            avatar_url: m.user.avatar_url ?? null,
+          })
+        }
+      })
+      setMessages(msgs)
     } catch (error) {
       console.error('Error loading messages:', error)
       if (showLoading) {

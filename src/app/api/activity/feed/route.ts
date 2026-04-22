@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
       actorIds.size > 0
         ? supabaseServer
             .from('user_profiles')
-            .select('id, name, avatar_url')
+            .select('id, name, email, avatar_url')
             .in('id', Array.from(actorIds))
         : Promise.resolve({ data: [] }),
 
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
       const p = profileMap.get(id) as any
       return {
         id,
-        name: p?.name?.trim() || 'Someone',
+        name: p?.name?.trim() || (p as any)?.email?.split('@')[0] || 'Someone',
         avatar_url: p?.avatar_url || null,
       }
     }
