@@ -11,8 +11,6 @@ self.addEventListener('push', (event) => {
     body: payload.body || '',
     icon: payload.icon || '/icon-192.png',
     badge: payload.badge || '/icon-192.png',
-    // url lives inside data so the notificationclick handler can read it
-    // via event.notification.data.url regardless of how it was delivered.
     data: payload.data || { url: '/dashboard' },
     requireInteraction: false,
   }
@@ -21,21 +19,26 @@ self.addEventListener('push', (event) => {
 })
 
 self.addEventListener('notificationclick', (event) => {
+  console.log('[SW] notificationclick fired', {
+    url: event.notification.data?.url,
+    data: event.notification.data,
+  })
+
   event.notification.close()
   const url = event.notification.data?.url || '/dashboard'
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      console.log('[SW] clients found:', clientList.length, clientList.map(c => c.url))
+
       if (clientList.length > 0) {
-        // App is already open — focus the first window and ask it to navigate.
-        // This lets Next.js router.push() handle the transition (preserving
-        // layout, scroll restoration, etc.) rather than a hard reload.
         const client = clientList[0]
+        console.log('[SW] posting NAVIGATE_FROM_NOTIFICATION to client:', client.url)
         client.postMessage({ type: 'NAVIGATE_FROM_NOTIFICATION', url })
         return client.focus()
       }
 
-      // App is not open — open a new window directly at the target URL.
+      console.log('[SW] no open clients — calling openWindow:', url)
       if (clients.openWindow) {
         return clients.openWindow(url)
       }

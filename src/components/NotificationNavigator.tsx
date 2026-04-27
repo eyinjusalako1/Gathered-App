@@ -16,7 +16,9 @@ export default function NotificationNavigator() {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
 
     const handleMessage = (event: MessageEvent) => {
+      console.log('[NotificationNavigator] message received', event.data)
       if (event.data?.type === 'NAVIGATE_FROM_NOTIFICATION' && event.data?.url) {
+        console.log('[NotificationNavigator] navigating to', event.data.url)
         router.push(event.data.url)
       }
     }
