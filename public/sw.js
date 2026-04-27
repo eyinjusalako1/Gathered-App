@@ -1,17 +1,19 @@
 self.addEventListener('push', (event) => {
-  let data = {}
+  let payload = {}
   try {
-    data = event.data ? event.data.json() : {}
+    payload = event.data ? event.data.json() : {}
   } catch {
-    data = { title: 'Gathered', body: event.data ? event.data.text() : '' }
+    payload = { title: 'Gathered', body: event.data ? event.data.text() : '' }
   }
 
-  const title = data.title || 'Gathered'
+  const title = payload.title || 'Gathered'
   const options = {
-    body: data.body || '',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    data: { url: data.url || '/dashboard' },
+    body: payload.body || '',
+    icon: payload.icon || '/icon-192.png',
+    badge: payload.badge || '/icon-192.png',
+    // url lives inside data so the notificationclick handler can read it
+    // via event.notification.data.url regardless of how it was delivered.
+    data: payload.data || { url: '/dashboard' },
     requireInteraction: false,
   }
 

@@ -50,10 +50,23 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
 
   if (!row?.subscription) return // No subscription — user hasn't enabled push
 
+  // Build the notification payload in the format the service worker expects.
+  // icon/badge are served from /public; url is nested under data so the SW
+  // can read event.notification.data.url in the notificationclick handler.
+  const notificationPayload = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    data: {
+      url: payload.url,
+    },
+  })
+
   try {
     await webpush.sendNotification(
       row.subscription as webpush.PushSubscription,
-      JSON.stringify(payload)
+      notificationPayload
     )
   } catch (err: any) {
     if (err.statusCode === 410 || err.statusCode === 404) {
