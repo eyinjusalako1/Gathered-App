@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/lib/auth-context'
 import { ToastProvider } from '@/components/ui/Toast'
 import OnboardingGuard from '@/components/OnboardingGuard'
+import NotificationNavigator from '@/components/NotificationNavigator'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -47,6 +48,7 @@ export default function RootLayout({
           <AuthProvider>
             <ToastProvider>
               <OnboardingGuard />
+              <NotificationNavigator />
               <div className="min-h-screen bg-beige-50 dark:bg-navy-900">
                 <main>
                   {children}

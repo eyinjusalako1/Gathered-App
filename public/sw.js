@@ -26,11 +26,16 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(url) && 'focus' in client) {
-          return client.focus()
-        }
+      if (clientList.length > 0) {
+        // App is already open — focus the first window and ask it to navigate.
+        // This lets Next.js router.push() handle the transition (preserving
+        // layout, scroll restoration, etc.) rather than a hard reload.
+        const client = clientList[0]
+        client.postMessage({ type: 'NAVIGATE_FROM_NOTIFICATION', url })
+        return client.focus()
       }
+
+      // App is not open — open a new window directly at the target URL.
       if (clients.openWindow) {
         return clients.openWindow(url)
       }
