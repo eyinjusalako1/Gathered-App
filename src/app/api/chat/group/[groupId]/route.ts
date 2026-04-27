@@ -311,7 +311,21 @@ export async function POST(
       .eq("id", userId)
       .single();
 
-    const displayName = profile?.name?.trim() || profile?.email?.split("@")[0] || "Member";
+    // Resolve display name with auth.users fallback for OAuth users whose
+    // email/name only lives in user_metadata, not in user_profiles.
+    let displayName = profile?.name?.trim() || profile?.email?.split("@")[0] || ""
+    if (!displayName) {
+      try {
+        const { data: authUser } = await supabaseServer.auth.admin.getUserById(userId)
+        displayName =
+          authUser?.user?.user_metadata?.name?.trim() ||
+          authUser?.user?.user_metadata?.full_name?.trim() ||
+          authUser?.user?.email?.split("@")[0] ||
+          "Member"
+      } catch {
+        displayName = "Member"
+      }
+    }
 
     const messageWithProfile = {
       ...newMessage,
