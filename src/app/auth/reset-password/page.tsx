@@ -87,6 +87,8 @@ export default function ResetPasswordPage() {
         throw error
       }
 
+      // Sign out after a successful reset so the user must log in with their
+      // new password — the recovery session should not become a regular session.
       await supabase.auth.signOut()
 
       toast({
@@ -97,9 +99,12 @@ export default function ResetPasswordPage() {
       router.replace('/auth/login?reset=success')
     } catch (err) {
       console.error('Password update error:', err)
+      // Discard the recovery session on failure so it cannot be reused or
+      // leave the user in a half-authenticated state.
+      await supabase.auth.signOut()
       toast({
         title: 'Could not update password.',
-        description: 'Please try again.',
+        description: 'Please try again or request a new reset link.',
         variant: 'error',
       })
     } finally {
