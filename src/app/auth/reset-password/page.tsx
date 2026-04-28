@@ -19,8 +19,18 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const init = async () => {
       try {
+        const url = typeof window !== 'undefined' ? new URL(window.location.href) : null
+        console.log('[reset-password] page loaded', {
+          fullUrl: url?.href,
+          code: url?.searchParams.get('code') ? `${url.searchParams.get('code')!.slice(0, 8)}…` : null,
+          allParams: url ? Object.fromEntries(url.searchParams.entries()) : {},
+          hash: url?.hash || '(none)',
+        })
+
         let { data } = await supabase.auth.getSession()
         let session = data.session
+
+        console.log('[reset-password] initial getSession result', { hasSession: !!session })
 
         if (!session && typeof window !== 'undefined') {
           const url = new URL(window.location.href)

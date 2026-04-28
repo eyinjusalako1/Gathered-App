@@ -7,15 +7,25 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code')
   const type = requestUrl.searchParams.get('type')
 
+  console.log('[auth/callback] hit', {
+    fullUrl: request.url,
+    code: code ? `${code.slice(0, 8)}…` : null,
+    type,
+    allParams: Object.fromEntries(requestUrl.searchParams.entries()),
+  })
+
   if (code) {
     // Recovery tokens must never sign the user in directly.
     // Pass the code to the reset-password page, which exchanges it client-side
     // only after the user has submitted a new password.
     if (type === 'recovery') {
+      console.log('[auth/callback] type=recovery detected — redirecting to /auth/reset-password with code')
       const destination = new URL('/auth/reset-password', requestUrl.origin)
       destination.searchParams.set('code', code)
       return NextResponse.redirect(destination)
     }
+
+    console.log('[auth/callback] type is NOT recovery — will exchange code and redirect to /dashboard', { type })
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
