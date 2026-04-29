@@ -51,17 +51,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, userData: UserData) => {
     // Get the current site URL - prioritize environment variable, then detect from window
-    let siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-    if (!siteUrl && typeof window !== 'undefined') {
-      siteUrl = `${window.location.protocol}//${window.location.host}`
-    }
-    
+    // Never fall back to window.location.host — on Vercel that resolves to the
+    // .vercel.app deployment URL, which isn't in the Supabase allowlist.
+    const siteUrl = (
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      'https://gathered-app.com'
+    ).replace(/\/$/, '')
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: userData,
-        emailRedirectTo: siteUrl ? `${siteUrl}/auth/callback` : undefined,
+        emailRedirectTo: `${siteUrl}/auth/callback`,
       },
     })
     return { error }

@@ -24,14 +24,14 @@ export default function ForgotPasswordPage() {
 
     setLoading(true)
     try {
-      // Build an absolute URL. NEXT_PUBLIC_APP_URL is the canonical site URL env var
-      // (see CLAUDE.md). Strip trailing slash before appending the path so the result
-      // exactly matches the Supabase allowlist entry (a double-slash causes Supabase to
-      // silently ignore redirectTo and fall back to the configured Site URL).
+      // Build an absolute URL using the canonical app origin.
+      // Never fall back to window.location.origin — on Vercel that resolves to the
+      // .vercel.app deployment URL, which isn't in the Supabase allowlist, causing
+      // Supabase to silently discard redirectTo and fall back to the site root.
       const origin = (
         process.env.NEXT_PUBLIC_APP_URL ||
         process.env.NEXT_PUBLIC_SITE_URL ||
-        (typeof window !== 'undefined' ? window.location.origin : '')
+        'https://gathered-app.com'
       ).replace(/\/$/, '')
       const redirectTo = `${origin}/auth/reset-password`
       console.log('[forgot-password] sending resetPasswordForEmail with redirectTo:', redirectTo)
