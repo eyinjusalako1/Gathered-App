@@ -11,13 +11,6 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const getRedirectBase = () => {
-    if (typeof window !== 'undefined') {
-      return process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
-    }
-    return process.env.NEXT_PUBLIC_SITE_URL || ''
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email.trim() || !email.includes('@') || !email.includes('.')) {
@@ -31,7 +24,17 @@ export default function ForgotPasswordPage() {
 
     setLoading(true)
     try {
-      const redirectTo = `${getRedirectBase()}/auth/reset-password`
+      // Build an absolute URL. NEXT_PUBLIC_APP_URL is the canonical site URL env var
+      // (see CLAUDE.md). Strip trailing slash before appending the path so the result
+      // exactly matches the Supabase allowlist entry (a double-slash causes Supabase to
+      // silently ignore redirectTo and fall back to the configured Site URL).
+      const origin = (
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        (typeof window !== 'undefined' ? window.location.origin : '')
+      ).replace(/\/$/, '')
+      const redirectTo = `${origin}/auth/reset-password`
+      console.log('[forgot-password] sending resetPasswordForEmail with redirectTo:', redirectTo)
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo,
       })
