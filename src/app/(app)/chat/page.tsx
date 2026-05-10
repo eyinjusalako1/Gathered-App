@@ -286,7 +286,7 @@ export default function ChatPage() {
                       {thread.other_user_avatar ? (
                         <img
                           src={thread.other_user_avatar}
-                          alt={thread.other_user_name}
+                          alt={thread.other_user_name ?? 'User'}
                           className="w-12 h-12 rounded-full border border-gold-500/30 flex-shrink-0"
                         />
                       ) : (
