@@ -75,9 +75,27 @@ export async function POST(req: NextRequest) {
           .filter((a: string) => a.length > 0)
       : [];
 
+    // Fetch the auth user to derive name/email if not already in user_profiles.
+    // This closes the gap where save-profile runs before onboarding Step 1
+    // and would otherwise create a nameless row.
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: { user: authUser2 } } = await supabaseAdmin.auth.admin.getUserById(userId)
+    const authMeta = authUser2?.user_metadata ?? {}
+    const derivedName: string | null =
+      authMeta.full_name || authMeta.name || authUser2?.email?.split('@')[0] || null
+
+    // Only write name if the existing row has none (don't overwrite a real name).
+    const { data: existingRow } = await supabaseAdmin
+      .from('user_profiles')
+      .select('name')
+      .eq('id', userId)
+      .maybeSingle()
+    const namePayload = !existingRow?.name && derivedName ? { name: derivedName } : {}
+
     // Prepare profile update payload
     const profileUpdate = {
       id: userId,
+      ...namePayload,
       bio: onboardingResult.long_bio || onboardingResult.short_bio || null,
       interests: uniqueTags.length > 0 ? uniqueTags : null,
       availability: availabilityArray.length > 0 ? availabilityArray : null,
@@ -86,7 +104,6 @@ export async function POST(req: NextRequest) {
     };
 
     // Save to Supabase using admin client (bypasses RLS)
-    const supabaseAdmin = getSupabaseAdmin();
     const { data, error } = await supabaseAdmin
       .from("user_profiles")
       .upsert(profileUpdate, {
