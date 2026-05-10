@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Home, Calendar, MessageCircle, Users, BookOpen, Compass } from 'lucide-react'
 import { useUnreadActivity } from '@/hooks/useUnreadActivity'
 import { usePendingConnections } from '@/hooks/usePendingConnections'
+import { useUnreadChat } from '@/hooks/useUnreadChat'
 
 interface BottomNavProps {
   activeTab?: string
@@ -25,6 +26,7 @@ export default function BottomNavigation({ activeTab = 'home', onTabChange }: Bo
   const [currentTab, setCurrentTab] = useState(activeTab)
   const { hasUnread } = useUnreadActivity()
   const { pendingCount } = usePendingConnections()
+  const { unreadCount: chatUnreadCount } = useUnreadChat()
   const [keyboardVisible, setKeyboardVisible] = useState(false)
 
   // Sync with prop changes
@@ -96,6 +98,14 @@ export default function BottomNavigation({ activeTab = 'home', onTabChange }: Bo
                   {/* Unread Activity Badge - shows on home tab when there's unread activity */}
                   {tab.id === 'home' && hasUnread && !isActive && (
                     <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-navy-900" />
+                  )}
+                  {/* Chat unread badge - sum of unread messages across all groups + DMs */}
+                  {tab.id === 'chat' && chatUnreadCount > 0 && !isActive && (
+                    <div className="absolute -top-1 -right-1 min-w-[14px] h-[14px] bg-gold-500 rounded-full border-2 border-white dark:border-navy-900 flex items-center justify-center">
+                      <span className="text-[8px] font-bold text-navy-900 leading-none px-0.5">
+                        {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+                      </span>
+                    </div>
                   )}
                   {/* Pending connections badge - shows on Discover tab */}
                   {tab.id === 'discover' && pendingCount > 0 && !isActive && (

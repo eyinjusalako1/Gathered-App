@@ -105,6 +105,23 @@ export default function DMChatPage({ params }: DMChatPageProps) {
     resolveParams()
   }, [params])
 
+  // Mark DM messages as read when the thread is opened.
+  // WHY fire-and-forget: same reason as group chats — we don't want the DB
+  // write to delay the UI. The chat list badge corrects on next refresh.
+  useEffect(() => {
+    if (!threadId || !user?.id) return
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      fetch('/api/chat/mark-read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+        body: JSON.stringify({ type: 'dm', id: threadId }),
+      })
+    })
+  }, [threadId, user?.id])
+
   // Load messages and other user info, subscribe to realtime
   useEffect(() => {
     if (!threadId || !user) return

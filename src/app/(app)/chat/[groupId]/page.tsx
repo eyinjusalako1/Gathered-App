@@ -53,6 +53,25 @@ export default function GroupChatPage({ params }: GroupChatPageProps) {
     Promise.resolve(params).then(p => setGroupId(p?.groupId || '')).catch(console.error)
   }, [params])
 
+  // Mark messages as read when the chat is opened.
+  // WHY fire-and-forget: we don't need to await the DB write before showing
+  // messages. The chat list badge will correct itself on its next refresh.
+  // WHY separate effect: groupId arrives asynchronously from params resolution,
+  // so we can't bundle this into the main effect below.
+  useEffect(() => {
+    if (!groupId || !user?.id) return
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      fetch('/api/chat/mark-read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+        body: JSON.stringify({ type: 'group', id: groupId }),
+      })
+    })
+  }, [groupId, user?.id])
+
   useEffect(() => {
     if (!groupId) return
     loadGroup()
