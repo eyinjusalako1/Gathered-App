@@ -96,6 +96,10 @@ export async function POST(req: NextRequest) {
     const profileUpdate = {
       id: userId,
       ...namePayload,
+      // Mirror auth email so the prayer wall COALESCE(up.name, up.email, …) has a
+      // reliable fallback when name is null — auth.users is not always accessible
+      // from SECURITY DEFINER functions in all Supabase permission configurations.
+      email: authUser2?.email ?? null,
       bio: onboardingResult.long_bio || onboardingResult.short_bio || null,
       interests: uniqueTags.length > 0 ? uniqueTags : null,
       availability: availabilityArray.length > 0 ? availabilityArray : null,
