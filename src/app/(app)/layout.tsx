@@ -10,7 +10,7 @@ function getActiveTab(pathname: string): string {
   if (pathname.startsWith('/dashboard') || pathname === '/') return 'home'
   if (pathname.startsWith('/events')) return 'events'
   if (pathname.startsWith('/chat')) return 'chat'
-  if (pathname.startsWith('/fellowship')) return 'fellowships'
+  if (pathname.startsWith('/fellowship') || pathname.startsWith('/groups')) return 'fellowships'
   if (pathname.startsWith('/devotions')) return 'devotions'
   if (pathname.startsWith('/discover')) return 'discover'
   if (pathname.startsWith('/more') || pathname.startsWith('/profile') || pathname.startsWith('/settings')) return 'more'

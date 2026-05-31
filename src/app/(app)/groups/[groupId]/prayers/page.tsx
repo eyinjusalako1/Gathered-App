@@ -2,16 +2,27 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/ui/Toast'
-import { Loader2, Plus, X } from 'lucide-react'
+import { Loader2, Plus, X, ArrowLeft } from 'lucide-react'
 import PrayerCard, { Prayer, CATEGORY_LABELS, CATEGORY_COLORS } from '@/components/PrayerCard'
+
+export const dynamic = 'force-dynamic'
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function PrayerWallPage() {
+export default function GroupPrayerWallPage({
+  params,
+}: {
+  params: { groupId: string }
+}) {
+  const { groupId } = params
   const { user } = useAuth()
+  const router = useRouter()
   const toast = useToast()
+
+  const [groupName, setGroupName] = useState<string>('')
   const [prayers, setPrayers] = useState<Prayer[]>([])
   const [activeTab, setActiveTab] = useState<'praying' | 'answered'>('praying')
   const [loading, setLoading] = useState(true)
@@ -36,19 +47,32 @@ export default function PrayerWallPage() {
     }
   }, [])
 
+  // Fetch group name once on mount
+  useEffect(() => {
+    if (!groupId) return
+    supabase
+      .from('fellowship_groups')
+      .select('name')
+      .eq('id', groupId)
+      .single()
+      .then(({ data }) => {
+        if (data?.name) setGroupName(data.name)
+      })
+  }, [groupId])
+
   const loadPrayers = useCallback(async () => {
     if (!user?.id) return
     try {
       const headers = await getAuthHeaders()
-      const res = await fetch(`/api/prayers/wall?status=${activeTab}`, { headers })
+      const res = await fetch(`/api/groups/${groupId}/prayers?status=${activeTab}`, { headers })
       if (res.ok) {
         const { prayers: data } = await res.json()
         setPrayers(data ?? [])
       }
     } catch (err) {
-      console.error('Error loading prayers:', err)
+      console.error('Error loading group prayers:', err)
     }
-  }, [user?.id, activeTab, getAuthHeaders])
+  }, [user?.id, groupId, activeTab, getAuthHeaders])
 
   useEffect(() => {
     if (!user?.id) return
@@ -85,12 +109,20 @@ export default function PrayerWallPage() {
         ))
       } else {
         setPrayers(prev => prev.map(p =>
-          p.id !== prayerId ? p : { ...p, has_prayed: original.has_prayed, prayed_count: original.prayed_count }
+          p.id !== prayerId ? p : {
+            ...p,
+            has_prayed:   original.has_prayed,
+            prayed_count: original.prayed_count,
+          }
         ))
       }
     } catch {
       setPrayers(prev => prev.map(p =>
-        p.id !== prayerId ? p : { ...p, has_prayed: original.has_prayed, prayed_count: original.prayed_count }
+        p.id !== prayerId ? p : {
+          ...p,
+          has_prayed:   original.has_prayed,
+          prayed_count: original.prayed_count,
+        }
       ))
     } finally {
       prayingInFlight.current.delete(prayerId)
@@ -127,6 +159,7 @@ export default function PrayerWallPage() {
           content:      content.trim(),
           category:     category ?? null,
           is_anonymous: isAnonymous,
+          group_id:     groupId,
         }),
       })
       if (res.ok) {
@@ -140,7 +173,12 @@ export default function PrayerWallPage() {
           setActiveTab('praying')
         }
       } else {
-        toast({ title: 'Could not share prayer', description: 'Please try again.', variant: 'error' })
+        const body = await res.json().catch(() => ({}))
+        toast({
+          title: 'Could not share prayer',
+          description: body.error ?? 'Please try again.',
+          variant: 'error',
+        })
       }
     } catch {
       toast({ title: 'Could not share prayer', description: 'Please try again.', variant: 'error' })
@@ -170,7 +208,16 @@ export default function PrayerWallPage() {
 
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-slate-50 mb-1">Prayer Wall</h1>
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200 text-sm mb-4 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+          <h1 className="text-2xl font-bold text-slate-50 mb-1">
+            {groupName ? `${groupName} Prayer Wall` : 'Prayer Wall'}
+          </h1>
           <p className="text-slate-400 text-sm">Lift each other up in prayer</p>
 
           {/* Tabs */}
@@ -200,14 +247,14 @@ export default function PrayerWallPage() {
 
         {/* Prayer list */}
         {prayers.length === 0 ? (
-          <EmptyState tab={activeTab} onPost={() => setShowSheet(true)} />
+          <GroupEmptyState tab={activeTab} onPost={() => setShowSheet(true)} />
         ) : (
           <div className="space-y-3">
             {prayers.map(prayer => (
               <PrayerCard
                 key={prayer.id}
                 prayer={prayer}
-                groupId={null}
+                groupId={groupId}
                 authorName={authorName}
                 onPray={handlePray}
                 onMarkAnswered={handleMarkAnswered}
@@ -229,7 +276,7 @@ export default function PrayerWallPage() {
 
       {/* Post sheet */}
       {showSheet && (
-        <PostSheet
+        <GroupPostSheet
           content={content}
           category={category}
           isAnonymous={isAnonymous}
@@ -247,7 +294,13 @@ export default function PrayerWallPage() {
 
 // ── Empty states ──────────────────────────────────────────────────────────────
 
-function EmptyState({ tab, onPost }: { tab: 'praying' | 'answered'; onPost: () => void }) {
+function GroupEmptyState({
+  tab,
+  onPost,
+}: {
+  tab: 'praying' | 'answered'
+  onPost: () => void
+}) {
   if (tab === 'answered') {
     return (
       <div className="flex flex-col items-center justify-center py-16">
@@ -265,9 +318,9 @@ function EmptyState({ tab, onPost }: { tab: 'praying' | 'answered'; onPost: () =
   return (
     <div className="flex flex-col items-center justify-center py-16">
       <div className="text-5xl mb-4">🙏</div>
-      <h3 className="text-lg font-semibold text-slate-50 mb-2">Be the first to share</h3>
+      <h3 className="text-lg font-semibold text-slate-50 mb-2">Share the first prayer</h3>
       <p className="text-slate-400 text-sm text-center max-w-sm mb-6">
-        Share what&apos;s on your heart — the community is here to pray with you.
+        Your group is here to pray with you. Share what&apos;s on your heart.
       </p>
       <button
         onClick={onPost}
@@ -281,7 +334,7 @@ function EmptyState({ tab, onPost }: { tab: 'praying' | 'answered'; onPost: () =
 
 // ── Post sheet ────────────────────────────────────────────────────────────────
 
-function PostSheet({
+function GroupPostSheet({
   content,
   category,
   isAnonymous,
@@ -310,7 +363,6 @@ function PostSheet({
         onClick={onClose}
       />
 
-      {/* Sheet — max-h + overflow-y-auto so submit button is always reachable on small phones */}
       <div
         className="relative w-full max-w-2xl bg-navy-900 border border-white/10 rounded-t-2xl flex flex-col overflow-hidden"
         style={{ maxHeight: '90svh' }}
@@ -319,7 +371,7 @@ function PostSheet({
 
           {/* Sheet header */}
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold text-slate-50">Share a prayer</h2>
+            <h2 className="text-lg font-bold text-slate-50">Share with your group</h2>
             <button
               onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded-full bg-navy-800/60 text-slate-400 hover:text-white transition-colors"
@@ -371,7 +423,7 @@ function PostSheet({
           <div className="flex items-center justify-between mb-6 p-3 bg-navy-800/40 rounded-xl border border-white/5">
             <div>
               <p className="text-sm font-medium text-slate-200">Post anonymously</p>
-              <p className="text-xs text-slate-500 mt-0.5">Your name will be hidden from others</p>
+              <p className="text-xs text-slate-500 mt-0.5">Your name will be hidden from group members</p>
             </div>
             <button
               onClick={() => onAnonymousChange(!isAnonymous)}

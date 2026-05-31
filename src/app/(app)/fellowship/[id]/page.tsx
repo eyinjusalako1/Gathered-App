@@ -32,6 +32,7 @@ import {
   Share2,
   AlertTriangle,
   ChevronRight,
+  Heart,
 } from 'lucide-react'
 import MemberInviteModal from '@/components/MemberInviteModal'
 import UserProfileModal from '@/components/UserProfileModal'
@@ -562,6 +563,12 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-gold-600/40 text-gold-500 px-6 py-3 text-sm font-medium hover:bg-gold-500/10 transition-colors"
               >
                 <MessageCircle className="w-5 h-5" /><span>Go to Chats</span>
+              </button>
+              <button
+                onClick={() => router.push(`/groups/${groupId}/prayers`)}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-gold-600/40 text-gold-500 px-6 py-3 text-sm font-medium hover:bg-gold-500/10 transition-colors"
+              >
+                <Heart className="w-5 h-5" /><span>Prayer Wall</span>
               </button>
             </>
           )}
