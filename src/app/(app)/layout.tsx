@@ -5,6 +5,7 @@ import BottomNavigation from '@/components/BottomNavigation'
 import OnboardingGuard from '@/components/OnboardingGuard'
 import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar'
 import StandaloneSessionGuard from '@/components/StandaloneSessionGuard'
+import PostHogProvider from '@/components/PostHogProvider'
 
 function getActiveTab(pathname: string): string {
   if (pathname.startsWith('/dashboard') || pathname === '/') return 'home'
@@ -89,15 +90,17 @@ export default async function AppLayout({
   const activeTab = getActiveTab(pathname)
 
   return (
-    <div className="flex flex-col min-h-screen bg-beige-50 dark:bg-navy-900" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-      <ServiceWorkerRegistrar />
-      <StandaloneSessionGuard />
-      <OnboardingGuard />
-      <main className="flex-1" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
-        {children}
-      </main>
-      <BottomNavigation activeTab={activeTab} onTabChange={handleTabChange} />
-    </div>
+    <PostHogProvider>
+      <div className="flex flex-col min-h-screen bg-beige-50 dark:bg-navy-900" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <ServiceWorkerRegistrar />
+        <StandaloneSessionGuard />
+        <OnboardingGuard />
+        <main className="flex-1" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
+          {children}
+        </main>
+        <BottomNavigation activeTab={activeTab} onTabChange={handleTabChange} />
+      </div>
+    </PostHogProvider>
   )
 }
 

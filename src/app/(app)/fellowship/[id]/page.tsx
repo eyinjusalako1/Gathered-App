@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { FellowshipService } from '@/lib/fellowship-service'
 import { EventService } from '@/lib/event-service'
 import { supabase } from '@/lib/supabase'
+import { posthog } from '@/lib/posthog'
 import { FellowshipGroup, GroupMembership, Event } from '@/types'
 import { getGradientFromName } from '@/utils/gradient'
 import { ActivityPlannerRequest, ActivityPlannerAPIResponse, ActivityPlannerResponse } from '@/types/activity-planner'
@@ -346,6 +347,7 @@ export default function FellowshipDetailPage({ params }: { params: Promise<{ id:
         toast({ title: 'Request sent', description: 'Your join request has been sent to the group admin', variant: 'success' })
       } else {
         await FellowshipService.joinGroup(groupId, user.id)
+        posthog.capture('group_joined', { group_id: groupId })
         toast({ title: 'Joined group', description: 'Welcome to the group!', variant: 'success' })
         await loadGroupData()
       }

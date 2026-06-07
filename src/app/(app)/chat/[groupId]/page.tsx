@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { FellowshipService } from '@/lib/fellowship-service'
 import { FellowshipGroup, GroupChatMessage } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { posthog } from '@/lib/posthog'
 import BackButton from '@/components/BackButton'
 import { Send, Users, Loader2, BookOpen, ArrowRight, Wifi, WifiOff, CornerUpLeft, X, Pencil, Check } from 'lucide-react'
 import { Skeleton, SkeletonText, SkeletonAvatar } from '@/components/ui/Skeleton'
@@ -52,6 +53,11 @@ export default function GroupChatPage({ params }: GroupChatPageProps) {
   useEffect(() => {
     Promise.resolve(params).then(p => setGroupId(p?.groupId || '')).catch(console.error)
   }, [params])
+
+  useEffect(() => {
+    if (!groupId) return
+    posthog.capture('chat_opened', { type: 'group', group_id: groupId })
+  }, [groupId])
 
   // Mark messages as read when the chat is opened.
   // WHY fire-and-forget: we don't need to await the DB write before showing

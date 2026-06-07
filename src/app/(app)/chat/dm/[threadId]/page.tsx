@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { posthog } from '@/lib/posthog'
 import { Send, Loader2, MessageSquare, ArrowLeft, MapPin, Sparkles, BookOpen, Flag, UserX, Wifi, WifiOff, CornerUpLeft, X, Pencil, Check } from 'lucide-react'
 import ReportModal from '@/components/ReportModal'
 
@@ -90,6 +91,11 @@ export default function DMChatPage({ params }: DMChatPageProps) {
     { text: "This really spoke to me...", label: "Reflect" },
     { text: "Let's discuss this...", label: "Discuss" }
   ]
+
+  useEffect(() => {
+    if (!threadId) return
+    posthog.capture('chat_opened', { type: 'dm', thread_id: threadId })
+  }, [threadId])
 
   // Resolve params
   useEffect(() => {
