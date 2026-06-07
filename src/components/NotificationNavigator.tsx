@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
-function nnLog(msg: string, data?: unknown) {
+function writeDebugEntry(entry: { ts: number; source: string; msg: string; data: unknown }) {
   try {
     const req = indexedDB.open('gathered-debug', 1)
     req.onupgradeneeded = (e) => {
@@ -11,7 +11,6 @@ function nnLog(msg: string, data?: unknown) {
     }
     req.onsuccess = (e) => {
       try {
-        const entry = { ts: Date.now(), source: 'NN', msg, data: data ?? null }
         ;(e.target as IDBOpenDBRequest).result
           .transaction('logs', 'readwrite')
           .objectStore('logs')
@@ -19,6 +18,10 @@ function nnLog(msg: string, data?: unknown) {
       } catch (_) {}
     }
   } catch (_) {}
+}
+
+function nnLog(msg: string, data?: unknown) {
+  writeDebugEntry({ ts: Date.now(), source: 'NN', msg, data: data ?? null })
 }
 
 export default function NotificationNavigator() {
@@ -35,6 +38,10 @@ export default function NotificationNavigator() {
     const handleMessage = (event: MessageEvent) => {
       console.log('[NotificationNavigator] message received', event.data)
       nnLog('message received from SW', event.data)
+
+      if (event.data?.type === 'DEBUG_LOG' && event.data?.entry) {
+        writeDebugEntry(event.data.entry)
+      }
 
       if (event.data?.type === 'NAVIGATE_FROM_NOTIFICATION' && event.data?.url) {
         console.log('[NotificationNavigator] navigating to', event.data.url)
