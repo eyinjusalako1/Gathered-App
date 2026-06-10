@@ -14,6 +14,9 @@ import FounderMessageModal, {
 import NotificationPrompt from "@/components/NotificationPrompt";
 import AddToHomeScreenPrompt from "@/components/AddToHomeScreenPrompt";
 import ActivityFeed from "@/components/ActivityFeed";
+import FaithFeed from "@/components/feed/FaithFeed";
+import PostComposer from "@/components/feed/PostComposer";
+import { Pencil } from "lucide-react";
 import {
   BookOpen,
   MapPin,
@@ -195,6 +198,9 @@ export default function DashboardPage() {
     }
   };
 
+  // Compose FAB
+  const [composerOpen, setComposerOpen] = useState(false);
+
   // Beta welcome banner
   const [showBetaWelcome, setShowBetaWelcome] = useState(false);
   useEffect(() => {
@@ -307,6 +313,11 @@ export default function DashboardPage() {
             <Settings className="w-5 h-5" />
           </button>
         </section>
+
+        {/* ── Faith Feed ────────────────────────────────────────────────── */}
+        {user?.id && (
+          <FaithFeed userId={user.id} />
+        )}
 
         {/* ── Beta welcome banner ───────────────────────────────────────── */}
         {showBetaWelcome && (
@@ -763,6 +774,26 @@ export default function DashboardPage() {
         isOpen={showFounderMessage}
         onClose={() => setShowFounderMessage(false)}
       />
+
+      {/* ── Compose FAB ───────────────────────────────────────────────── */}
+      {user?.id && (
+        <>
+          <button
+            onClick={() => setComposerOpen(true)}
+            aria-label="Share to Faith Feed"
+            className="fixed bottom-24 right-4 z-[60] w-14 h-14 rounded-full bg-gradient-to-r from-gold-600 to-gold-500 text-navy-900 shadow-lg flex items-center justify-center hover:from-gold-500 hover:to-gold-400 transition-all focus:outline-none focus:ring-2 focus:ring-gold-500/60"
+            style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom) + 1rem)' }}
+          >
+            <Pencil className="w-5 h-5" />
+          </button>
+          <PostComposer
+            isOpen={composerOpen}
+            onClose={() => setComposerOpen(false)}
+            onPosted={() => setComposerOpen(false)}
+            userId={user.id}
+          />
+        </>
+      )}
     </main>
   );
 }
