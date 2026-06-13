@@ -17,10 +17,10 @@ export interface FaithPost {
 }
 
 const TYPE_META: Record<string, { label: string; cls: string }> = {
-  reflection: { label: 'Reflection', cls: 'text-sky-400 bg-sky-500/10 border-sky-500/20' },
-  prayer:     { label: 'Prayer',     cls: 'text-gold-400 bg-gold-500/10 border-gold-500/20' },
-  verse:      { label: 'Verse',      cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-  testimony:  { label: 'Testimony',  cls: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
+  thought:        { label: 'Reflection',    cls: 'text-sky-400 bg-sky-500/10 border-sky-500/20' },
+  prayer_request: { label: 'Prayer',        cls: 'text-gold-400 bg-gold-500/10 border-gold-500/20' },
+  verse:          { label: 'Verse',         cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+  testimony:      { label: 'Testimony',     cls: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
 }
 
 const REACTIONS = [

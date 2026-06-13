@@ -6,17 +6,17 @@ import { supabase } from '@/lib/supabase'
 import BottomSheet from '@/components/ui/BottomSheet'
 
 const POST_TYPES = [
-  { value: 'reflection', label: 'Reflection', emoji: '💭' },
-  { value: 'prayer',     label: 'Prayer',     emoji: '🙏' },
-  { value: 'verse',      label: 'Verse',      emoji: '📖' },
-  { value: 'testimony',  label: 'Testimony',  emoji: '✨' },
+  { value: 'thought',         label: 'Reflection', emoji: '💭' },
+  { value: 'prayer_request',  label: 'Prayer',     emoji: '🙏' },
+  { value: 'verse',           label: 'Verse',      emoji: '📖' },
+  { value: 'testimony',       label: 'Testimony',  emoji: '✨' },
 ]
 
 const PLACEHOLDERS: Record<string, string> = {
-  reflection: "What's on your heart today?",
-  prayer:     'Share a prayer request or praise…',
-  verse:      'Share a verse that spoke to you…',
-  testimony:  'Share what God has done…',
+  thought:        "What's on your heart today?",
+  prayer_request: 'Share a prayer request or praise…',
+  verse:          'Share a verse that spoke to you…',
+  testimony:      'Share what God has done…',
 }
 
 interface Props {
@@ -27,7 +27,7 @@ interface Props {
 }
 
 export default function PostComposer({ isOpen, onClose, onPosted, userId }: Props) {
-  const [postType, setPostType] = useState('reflection')
+  const [postType, setPostType] = useState('thought')
   const [content, setContent] = useState('')
   const [visibility, setVisibility] = useState<'public' | 'connections'>('public')
   const [submitting, setSubmitting] = useState(false)
