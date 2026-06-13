@@ -203,11 +203,7 @@ export default function OnboardingProfilePage() {
 
       if (!res.ok) {
         console.error("Save profile error:", json);
-        // Show more detailed error message
-        const errorMsg = json.details 
-          ? `${json.error}: ${json.details}`
-          : json.error || "Failed to save profile. Check console for details.";
-        setError(errorMsg);
+        setError("Couldn't save your profile — please try again.");
         setIsSaving(false);
         return;
       }
@@ -218,9 +214,7 @@ export default function OnboardingProfilePage() {
       router.replace('/dashboard');
     } catch (err: any) {
       console.error("Save profile unexpected error:", err);
-      // Show network or parsing errors
-      const errorMsg = err.message || "Unexpected error saving profile. Check console.";
-      setError(errorMsg);
+      setError("Couldn't save your profile — please try again.");
       setIsSaving(false);
     }
   };

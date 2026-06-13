@@ -90,13 +90,24 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     // Primary: name explicitly passed from onboarding form (trimmed).
-    // Fallback: auth metadata (set during signup), then email prefix.
+    // Fallback: auth metadata set during signup. No further fallback.
     const resolvedName: string | null =
       (typeof bodyName === 'string' && bodyName.trim()) ||
       authMeta.full_name ||
       authMeta.name ||
-      authUser2?.email?.split('@')[0] ||
       null
+
+    if (!existingRow?.name && !resolvedName) {
+      console.error('[save-profile] TRIPWIRE: name missing for userId', userId, {
+        bodyName,
+        authMetaKeys: Object.keys(authMeta),
+      })
+      return NextResponse.json(
+        { error: 'display_name_missing', details: 'No display name could be resolved' },
+        { status: 400 }
+      )
+    }
+
     const namePayload = !existingRow?.name && resolvedName ? { name: resolvedName } : {}
 
     // Prepare profile update payload
