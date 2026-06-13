@@ -32,6 +32,13 @@ export default function SignUpPage() {
       return
     }
 
+    const trimmedName = formData.name.trim()
+    if (!trimmedName) {
+      setError('Please enter your name')
+      setLoading(false)
+      return
+    }
+
     if (formData.password.length < 6) {
       setError('Password must be at least 6 characters')
       setLoading(false)
@@ -39,7 +46,7 @@ export default function SignUpPage() {
     }
 
     const { error } = await signUp(formData.email, formData.password, {
-      name: formData.name,
+      name: trimmedName,
     })
 
     if (error) {

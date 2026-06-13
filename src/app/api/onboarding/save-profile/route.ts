@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { userId, answers, onboardingResult } = body;
+    const { userId, name: bodyName, answers, onboardingResult } = body;
 
     // Ownership check — userId in body must match the authenticated user
     if (!userId || userId !== authUser.userId) {
@@ -81,8 +81,6 @@ export async function POST(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const { data: { user: authUser2 } } = await supabaseAdmin.auth.admin.getUserById(userId)
     const authMeta = authUser2?.user_metadata ?? {}
-    const derivedName: string | null =
-      authMeta.full_name || authMeta.name || authUser2?.email?.split('@')[0] || null
 
     // Only write name if the existing row has none (don't overwrite a real name).
     const { data: existingRow } = await supabaseAdmin
@@ -90,7 +88,16 @@ export async function POST(req: NextRequest) {
       .select('name')
       .eq('id', userId)
       .maybeSingle()
-    const namePayload = !existingRow?.name && derivedName ? { name: derivedName } : {}
+
+    // Primary: name explicitly passed from onboarding form (trimmed).
+    // Fallback: auth metadata (set during signup), then email prefix.
+    const resolvedName: string | null =
+      (typeof bodyName === 'string' && bodyName.trim()) ||
+      authMeta.full_name ||
+      authMeta.name ||
+      authUser2?.email?.split('@')[0] ||
+      null
+    const namePayload = !existingRow?.name && resolvedName ? { name: resolvedName } : {}
 
     // Prepare profile update payload
     const profileUpdate = {

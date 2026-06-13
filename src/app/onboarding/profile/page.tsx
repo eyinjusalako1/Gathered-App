@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 type Step = 1 | 2 | 3;
 
 interface Answers {
+  name: string;
   interests: string;
   weekend_style: string;
   social_energy: string;
@@ -28,6 +29,7 @@ export default function OnboardingProfilePage() {
   const { user } = useAuth();
   const [step, setStep] = useState<Step>(1);
   const [answers, setAnswers] = useState<Answers>({
+    name: "",
     interests: "",
     weekend_style: "",
     social_energy: "",
@@ -39,6 +41,14 @@ export default function OnboardingProfilePage() {
   const [onboardingResult, setOnboardingResult] = useState<OnboardingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(true);
+
+  // Pre-fill name from auth metadata (set during signup)
+  useEffect(() => {
+    const metaName = (user?.user_metadata?.name as string | undefined)?.trim() ?? "";
+    if (metaName) {
+      setAnswers((prev) => prev.name ? prev : { ...prev, name: metaName });
+    }
+  }, [user]);
 
   // Onboarding guard: redirect to dashboard if profile is already complete
   useEffect(() => {
@@ -94,7 +104,7 @@ export default function OnboardingProfilePage() {
 
   const canGoNext = () => {
     if (step === 1) {
-      return answers.interests.trim().length > 0;
+      return answers.name.trim().length > 0 && answers.interests.trim().length > 0;
     }
     if (step === 2) {
       return (
@@ -183,8 +193,9 @@ export default function OnboardingProfilePage() {
         },
         body: JSON.stringify({
           userId: user.id,
+          name: answers.name.trim(),
           answers,
-          onboardingResult, // 👈 this is the assistant output
+          onboardingResult,
         }),
       });
 
@@ -238,13 +249,28 @@ export default function OnboardingProfilePage() {
         {/* Steps */}
         {step === 1 && (
           <section className="space-y-4">
-            <h2 className="text-lg font-medium">Your interests</h2>
+            <h2 className="text-lg font-medium">Tell us about you</h2>
             <p className="text-sm text-slate-400">
-              Tell us what you&apos;re into so we can match you with the right people and activities.
+              This is how you&apos;ll appear to others in the community.
             </p>
+
             <div className="space-y-2">
               <label className="block text-sm font-medium">
-                What are your main interests?
+                Display name <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="What should we call you?"
+                value={answers.name}
+                onChange={(e) => updateAnswer("name", e.target.value)}
+              />
+              <p className="text-xs text-slate-500">Shown on your posts and profile</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">
+                What are your main interests? <span className="text-red-400">*</span>
               </label>
               <textarea
                 className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
