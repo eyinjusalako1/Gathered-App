@@ -1,21 +1,86 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import FaithPostCard, { FaithPost } from './FaithPostCard'
 import FirstPostPrompt from './FirstPostPrompt'
 import StarterFeed from './StarterFeed'
 import FeedOnboardingOverlay from './FeedOnboardingOverlay'
 import PostComposer from './PostComposer'
-import { Loader2 } from 'lucide-react'
+import { Loader2, MapPin } from 'lucide-react'
 
 const PAGE_SIZE = 10
+const SUGGESTION_INTERVAL = 8
+
+const getInitials = (name: string) =>
+  name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()
+
+// ─── Follow suggestion card (injected in-feed every SUGGESTION_INTERVAL posts) ──
+
+interface FollowSuggestion {
+  id: string
+  name: string | null
+  city: string | null
+  avatar_url?: string | null
+}
+
+function FollowSuggestionCard({ people }: { people: FollowSuggestion[] }) {
+  const router = useRouter()
+
+  return (
+    <div className="rounded-2xl border border-gold-500/20 bg-navy-800/50 p-4 space-y-3">
+      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+        People to follow
+      </p>
+      <div className="space-y-3">
+        {people.map((person) => (
+          <div key={person.id} className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-gold-500/15 border border-gold-500/30 flex items-center justify-center shrink-0 overflow-hidden">
+              {person.avatar_url ? (
+                <img
+                  src={person.avatar_url}
+                  alt={person.name || ''}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-sm font-semibold text-gold-500">
+                  {getInitials(person.name || '?')}
+                </span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-100 truncate">
+                {person.name || 'New friend'}
+              </p>
+              {person.city && (
+                <p className="text-xs text-slate-400 flex items-center gap-1">
+                  <MapPin className="w-3 h-3" />
+                  {person.city}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => router.push('/discover')}
+              className="rounded-full bg-gold-500 text-navy-900 px-3 py-1 text-[11px] font-semibold hover:bg-gold-600 transition-colors shrink-0"
+            >
+              Follow
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main feed ──────────────────────────────────────────────────────────────
 
 interface Props {
   userId: string
+  followSuggestions?: FollowSuggestion[]
 }
 
-export default function FaithFeed({ userId }: Props) {
+export default function FaithFeed({ userId, followSuggestions }: Props) {
   const [posts, setPosts] = useState<FaithPost[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -117,9 +182,23 @@ export default function FaithFeed({ userId }: Props) {
         <StarterFeed onCompose={() => setComposerOpen(true)} />
       ) : (
         <div className="space-y-3">
-          {posts.map(post => (
-            <FaithPostCard key={post.post_id} post={post} />
-          ))}
+          {posts.map((post, index) => {
+            // Inject a follow suggestion card after every 8th post.
+            // Each slot uses a non-overlapping pair from the suggestions array,
+            // so no user appears twice in a session.
+            const isSlotBoundary = (index + 1) % SUGGESTION_INTERVAL === 0
+            const slotIndex = Math.floor(index / SUGGESTION_INTERVAL)
+            const pairStart = slotIndex * 2
+            const pair = followSuggestions?.slice(pairStart, pairStart + 2) ?? []
+            const showSuggestions = isSlotBoundary && pair.length > 0
+
+            return (
+              <Fragment key={post.post_id}>
+                <FaithPostCard post={post} />
+                {showSuggestions && <FollowSuggestionCard people={pair} />}
+              </Fragment>
+            )
+          })}
 
           {hasMore && (
             <button
