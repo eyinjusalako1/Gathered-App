@@ -12,7 +12,6 @@ import FounderMessageModal, {
 import NotificationPrompt from "@/components/NotificationPrompt";
 import AddToHomeScreenPrompt from "@/components/AddToHomeScreenPrompt";
 import FaithFeed from "@/components/feed/FaithFeed";
-import PostComposer from "@/components/feed/PostComposer";
 import { Pencil } from "lucide-react";
 import {
   BookOpen,
@@ -428,7 +427,14 @@ export default function DashboardPage() {
 
         {/* ── Faith Feed ────────────────────────────────────────────────── */}
         {user?.id && (
-          <FaithFeed userId={user.id} followSuggestions={people} />
+          <FaithFeed
+            userId={user.id}
+            followSuggestions={people}
+            userName={profile?.name ?? null}
+            userAvatarUrl={profile?.avatar_url ?? null}
+            isComposerOpen={composerOpen}
+            onComposerClose={() => setComposerOpen(false)}
+          />
         )}
 
       </div>
@@ -440,22 +446,14 @@ export default function DashboardPage() {
 
       {/* ── Compose FAB ───────────────────────────────────────────────── */}
       {user?.id && (
-        <>
-          <button
-            onClick={() => setComposerOpen(true)}
-            aria-label="Share to Faith Feed"
-            className="fixed bottom-24 right-4 z-[60] w-14 h-14 rounded-full bg-gradient-to-r from-gold-600 to-gold-500 text-navy-900 shadow-lg flex items-center justify-center hover:from-gold-500 hover:to-gold-400 transition-all focus:outline-none focus:ring-2 focus:ring-gold-500/60"
-            style={{ bottom: "calc(5rem + env(safe-area-inset-bottom) + 1rem)" }}
-          >
-            <Pencil className="w-5 h-5" />
-          </button>
-          <PostComposer
-            isOpen={composerOpen}
-            onClose={() => setComposerOpen(false)}
-            onPosted={() => setComposerOpen(false)}
-            userId={user.id}
-          />
-        </>
+        <button
+          onClick={() => setComposerOpen(true)}
+          aria-label="Share to Faith Feed"
+          className="fixed bottom-24 right-4 z-[60] w-14 h-14 rounded-full bg-gradient-to-r from-gold-600 to-gold-500 text-navy-900 shadow-lg flex items-center justify-center hover:from-gold-500 hover:to-gold-400 transition-all focus:outline-none focus:ring-2 focus:ring-gold-500/60"
+          style={{ bottom: "calc(5rem + env(safe-area-inset-bottom) + 1rem)" }}
+        >
+          <Pencil className="w-5 h-5" />
+        </button>
       )}
     </main>
   );

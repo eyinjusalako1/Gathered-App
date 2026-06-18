@@ -78,9 +78,13 @@ function FollowSuggestionCard({ people }: { people: FollowSuggestion[] }) {
 interface Props {
   userId: string
   followSuggestions?: FollowSuggestion[]
+  userName?: string | null
+  userAvatarUrl?: string | null
+  isComposerOpen?: boolean
+  onComposerClose?: () => void
 }
 
-export default function FaithFeed({ userId, followSuggestions }: Props) {
+export default function FaithFeed({ userId, followSuggestions, userName, userAvatarUrl, isComposerOpen: externalOpen, onComposerClose }: Props) {
   const [posts, setPosts] = useState<FaithPost[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -88,6 +92,12 @@ export default function FaithFeed({ userId, followSuggestions }: Props) {
   const [hasPosts, setHasPosts] = useState<boolean | null>(null)
   const [composerOpen, setComposerOpen] = useState(false)
   const offsetRef = useRef(0)
+
+  const composerVisible = !!externalOpen || composerOpen
+  const closeComposer = () => {
+    setComposerOpen(false)
+    onComposerClose?.()
+  }
 
   const fetchFeed = useCallback(async (offset: number, append: boolean) => {
     try {
@@ -127,16 +137,62 @@ export default function FaithFeed({ userId, followSuggestions }: Props) {
     fetchHasPosted()
   }, [userId, fetchFeed, fetchHasPosted])
 
+  // Realtime: on any INSERT to faith_posts, refetch page 1 via RPC and merge
+  // new posts by id so visibility rules are enforced and own posts don't double-render.
+  useEffect(() => {
+    if (!userId) return
+
+    const channel = supabase
+      .channel(`faith-feed:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'faith_posts' },
+        async () => {
+          try {
+            const { data } = await supabase.rpc('get_faith_feed', {
+              p_user_id: userId,
+              p_limit: PAGE_SIZE,
+              p_offset: 0,
+            })
+            const fresh = (data as FaithPost[]) ?? []
+            if (fresh.length === 0) return
+            setPosts(prev => {
+              const seenIds = new Set(prev.map(p => p.post_id))
+              const incoming = fresh.filter(p => !seenIds.has(p.post_id))
+              return incoming.length > 0 ? [...incoming, ...prev] : prev
+            })
+          } catch { /* fail silently — feed stays as-is */ }
+        }
+      )
+      .subscribe((status, err) => {
+        console.log('[FaithFeed realtime]', status, err ?? '')
+      })
+
+    return () => { channel.unsubscribe() }
+  }, [userId])
+
   const handleLoadMore = () => {
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
     fetchFeed(offsetRef.current, true)
   }
 
-  const handlePosted = () => {
+  const handlePosted = (data: { post_type: string; content: string; visibility: 'public' | 'connections' }) => {
+    const optimistic: FaithPost = {
+      post_id: `opt-${Date.now()}`,
+      author_id: userId,
+      author_name: userName || '',
+      author_avatar_url: userAvatarUrl ?? null,
+      post_type: data.post_type,
+      content: data.content,
+      visibility: data.visibility,
+      created_at: new Date().toISOString(),
+      reactions: {},
+      user_reaction: null,
+    }
     setHasPosts(true)
+    setPosts(prev => [optimistic, ...prev])
     offsetRef.current = 0
-    setLoading(true)
     fetchFeed(0, false)
   }
 
@@ -217,8 +273,8 @@ export default function FaithFeed({ userId, followSuggestions }: Props) {
       )}
 
       <PostComposer
-        isOpen={composerOpen}
-        onClose={() => setComposerOpen(false)}
+        isOpen={composerVisible}
+        onClose={closeComposer}
         onPosted={handlePosted}
         userId={userId}
       />

@@ -22,7 +22,7 @@ const PLACEHOLDERS: Record<string, string> = {
 interface Props {
   isOpen: boolean
   onClose: () => void
-  onPosted: () => void
+  onPosted: (data: { post_type: string; content: string; visibility: 'public' | 'connections' }) => void
   userId: string
 }
 
@@ -36,7 +36,7 @@ export default function PostComposer({ isOpen, onClose, onPosted, userId }: Prop
   const handleClose = () => {
     if (submitting) return
     setContent('')
-    setPostType('reflection')
+    setPostType('thought')
     setVisibility('public')
     setError(null)
     onClose()
@@ -63,10 +63,11 @@ export default function PostComposer({ isOpen, onClose, onPosted, userId }: Prop
         .from('user_feed_state')
         .upsert({ user_id: userId, has_posted: true }, { onConflict: 'user_id' })
 
+      const postedData = { post_type: postType, content: trimmed, visibility }
       setContent('')
-      setPostType('reflection')
+      setPostType('thought')
       setVisibility('public')
-      onPosted()
+      onPosted(postedData)
       onClose()
     } catch (err: any) {
       setError('Something went wrong. Please try again.')
