@@ -111,7 +111,7 @@ export default function FaithPostCard({ post, userId, onEdit, onDelete }: Props)
   const handleDeleteConfirm = async () => {
     setDeleting(true)
     try {
-      await supabase.from('faith_posts').delete().eq('post_id', post.post_id)
+      await supabase.from('faith_posts').delete().eq('id', post.post_id)
       onDelete?.(post.post_id)
     } catch { /* ignore */ } finally {
       setDeleting(false)

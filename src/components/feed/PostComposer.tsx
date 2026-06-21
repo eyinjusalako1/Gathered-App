@@ -80,8 +80,8 @@ export default function PostComposer({ isOpen, onClose, onPosted, userId, editPo
             visibility,
             edited_at: new Date().toISOString(),
           })
-          .eq('post_id', editPost.post_id)
-          .select('post_id, edited_at')
+          .eq('id', editPost.post_id)   // table column is 'id'; post.post_id holds the value
+          .select('id, edited_at')
 
         if (updateErr) throw updateErr
 
