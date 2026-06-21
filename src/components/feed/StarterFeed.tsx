@@ -12,6 +12,7 @@ const STARTER_POSTS: FaithPost[] = [
     visibility: 'public',
     created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     reactions: { amen: 7, heart: 4 },
+    edited_at: null,
     user_reaction: null,
   },
   {
@@ -24,6 +25,7 @@ const STARTER_POSTS: FaithPost[] = [
     visibility: 'public',
     created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
     reactions: { amen: 12, heart: 6, fire: 3 },
+    edited_at: null,
     user_reaction: null,
   },
   {
@@ -35,6 +37,7 @@ const STARTER_POSTS: FaithPost[] = [
     visibility: 'public',
     created_at: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
     reactions: { amen: 9, fire: 5, heart: 8 },
+    edited_at: null,
     user_reaction: null,
   },
 ]

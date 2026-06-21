@@ -91,11 +91,13 @@ export default function FaithFeed({ userId, followSuggestions, userName, userAva
   const [hasMore, setHasMore] = useState(true)
   const [hasPosts, setHasPosts] = useState<boolean | null>(null)
   const [composerOpen, setComposerOpen] = useState(false)
+  const [editingPost, setEditingPost] = useState<FaithPost | null>(null)
   const offsetRef = useRef(0)
 
   const composerVisible = !!externalOpen || composerOpen
   const closeComposer = () => {
     setComposerOpen(false)
+    setEditingPost(null)
     onComposerClose?.()
   }
 
@@ -137,8 +139,9 @@ export default function FaithFeed({ userId, followSuggestions, userName, userAva
     fetchHasPosted()
   }, [userId, fetchFeed, fetchHasPosted])
 
-  // Realtime: on any INSERT to faith_posts, refetch page 1 via RPC and merge
-  // new posts by id so visibility rules are enforced and own posts don't double-render.
+  // Realtime: INSERT/UPDATE/DELETE all refetch page 1 via RPC so edits and deletes
+  // propagate live to other users. Own actions are handled optimistically above;
+  // the refetch reconciles the real state without a loading spinner.
   useEffect(() => {
     if (!userId) return
 
@@ -146,7 +149,7 @@ export default function FaithFeed({ userId, followSuggestions, userName, userAva
       .channel(`faith-feed:${userId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'faith_posts' },
+        { event: '*', schema: 'public', table: 'faith_posts' },
         async () => {
           try {
             const { data } = await supabase.rpc('get_faith_feed', {
@@ -157,9 +160,10 @@ export default function FaithFeed({ userId, followSuggestions, userName, userAva
             const fresh = (data as FaithPost[]) ?? []
             if (fresh.length === 0) return
             setPosts(prev => {
-              const seenIds = new Set(prev.map(p => p.post_id))
-              const incoming = fresh.filter(p => !seenIds.has(p.post_id))
-              return incoming.length > 0 ? [...incoming, ...prev] : prev
+              const freshIds = new Set(fresh.map(p => p.post_id))
+              // Preserve paginated posts beyond page 1 that aren't in the fresh set
+              const beyond = prev.filter(p => !freshIds.has(p.post_id) && !p.post_id.startsWith('opt-'))
+              return [...fresh, ...beyond]
             })
           } catch { /* fail silently — feed stays as-is */ }
         }
@@ -177,6 +181,29 @@ export default function FaithFeed({ userId, followSuggestions, userName, userAva
     fetchFeed(offsetRef.current, true)
   }
 
+  const handleEdit = useCallback((post: FaithPost) => {
+    setEditingPost(post)
+  }, [])
+
+  const handleUpdated = useCallback((updated: {
+    post_id: string
+    post_type: string
+    content: string
+    visibility: 'public' | 'connections'
+    edited_at: string
+  }) => {
+    setPosts(prev => prev.map(p =>
+      p.post_id === updated.post_id
+        ? { ...p, post_type: updated.post_type, content: updated.content, visibility: updated.visibility, edited_at: updated.edited_at }
+        : p
+    ))
+    setEditingPost(null)
+  }, [])
+
+  const handleDelete = useCallback((postId: string) => {
+    setPosts(prev => prev.filter(p => p.post_id !== postId))
+  }, [])
+
   const handlePosted = (data: { post_type: string; content: string; visibility: 'public' | 'connections' }) => {
     const optimistic: FaithPost = {
       post_id: `opt-${Date.now()}`,
@@ -187,6 +214,7 @@ export default function FaithFeed({ userId, followSuggestions, userName, userAva
       content: data.content,
       visibility: data.visibility,
       created_at: new Date().toISOString(),
+      edited_at: null,
       reactions: {},
       user_reaction: null,
     }
@@ -250,7 +278,12 @@ export default function FaithFeed({ userId, followSuggestions, userName, userAva
 
             return (
               <Fragment key={post.post_id}>
-                <FaithPostCard post={post} />
+                <FaithPostCard
+                  post={post}
+                  userId={userId}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
                 {showSuggestions && <FollowSuggestionCard people={pair} />}
               </Fragment>
             )
@@ -273,10 +306,12 @@ export default function FaithFeed({ userId, followSuggestions, userName, userAva
       )}
 
       <PostComposer
-        isOpen={composerVisible}
+        isOpen={composerVisible || !!editingPost}
         onClose={closeComposer}
         onPosted={handlePosted}
         userId={userId}
+        editPost={editingPost ?? undefined}
+        onUpdated={handleUpdated}
       />
     </section>
   )

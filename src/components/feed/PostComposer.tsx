@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Globe, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import BottomSheet from '@/components/ui/BottomSheet'
@@ -19,19 +19,40 @@ const PLACEHOLDERS: Record<string, string> = {
   testimony:      'Share what God has done…',
 }
 
+interface EditPost {
+  post_id: string
+  post_type: string
+  content: string
+  visibility: 'public' | 'connections'
+}
+
 interface Props {
   isOpen: boolean
   onClose: () => void
   onPosted: (data: { post_type: string; content: string; visibility: 'public' | 'connections' }) => void
   userId: string
+  editPost?: EditPost
+  onUpdated?: (updated: { post_id: string; post_type: string; content: string; visibility: 'public' | 'connections'; edited_at: string }) => void
 }
 
-export default function PostComposer({ isOpen, onClose, onPosted, userId }: Props) {
+export default function PostComposer({ isOpen, onClose, onPosted, userId, editPost, onUpdated }: Props) {
   const [postType, setPostType] = useState('thought')
   const [content, setContent] = useState('')
   const [visibility, setVisibility] = useState<'public' | 'connections'>('public')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Pre-fill state when switching into edit mode
+  useEffect(() => {
+    if (isOpen && editPost) {
+      setPostType(editPost.post_type)
+      setContent(editPost.content)
+      setVisibility(editPost.visibility)
+      setError(null)
+    }
+  // post_id as dep: only re-fills when a different post is opened, not on every keystroke
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editPost?.post_id])
 
   const handleClose = () => {
     if (submitting) return
@@ -48,6 +69,45 @@ export default function PostComposer({ isOpen, onClose, onPosted, userId }: Prop
     setSubmitting(true)
     setError(null)
 
+    if (editPost) {
+      // ── EDIT MODE ──────────────────────────────────────────────────────────
+      try {
+        const { data, error: updateErr } = await supabase
+          .from('faith_posts')
+          .update({
+            content: trimmed,
+            post_type: postType,
+            visibility,
+            edited_at: new Date().toISOString(),
+          })
+          .eq('post_id', editPost.post_id)
+          .select('post_id, edited_at')
+
+        if (updateErr) throw updateErr
+
+        // Zero rows = RLS blocked the update (window expired between client check and write)
+        if (!data || data.length === 0) {
+          setError('Edit window has expired — this post can no longer be edited.')
+          return
+        }
+
+        onUpdated?.({
+          post_id: editPost.post_id,
+          post_type: postType,
+          content: trimmed,
+          visibility,
+          edited_at: data[0].edited_at,
+        })
+        onClose()
+      } catch {
+        setError('Something went wrong. Please try again.')
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
+    // ── CREATE MODE ───────────────────────────────────────────────────────────
     try {
       const { error: insertErr } = await supabase.from('faith_posts').insert({
         author_id: userId,
@@ -69,7 +129,7 @@ export default function PostComposer({ isOpen, onClose, onPosted, userId }: Prop
       setVisibility('public')
       onPosted(postedData)
       onClose()
-    } catch (err: any) {
+    } catch {
       setError('Something went wrong. Please try again.')
     } finally {
       setSubmitting(false)
@@ -83,7 +143,7 @@ export default function PostComposer({ isOpen, onClose, onPosted, userId }: Prop
     <BottomSheet
       isOpen={isOpen}
       onClose={handleClose}
-      title="Share with your community"
+      title={editPost ? 'Edit post' : 'Share with your community'}
       maxHeight="85vh"
       disableDrag
       footer={
@@ -96,7 +156,7 @@ export default function PostComposer({ isOpen, onClose, onPosted, userId }: Prop
             disabled={!content.trim() || overLimit || submitting}
             className="rounded-full bg-gold-500 text-navy-900 px-5 py-2 text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Posting…' : 'Post'}
+            {submitting ? (editPost ? 'Saving…' : 'Posting…') : (editPost ? 'Save' : 'Post')}
           </button>
         </div>
       }
