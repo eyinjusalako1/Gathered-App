@@ -5,6 +5,7 @@
 @layer base {
   html {
     font-family: 'Inter', 'Nunito Sans', 'Poppins', system-ui, sans-serif;
+    overflow-x: hidden;
   }
   
   body {

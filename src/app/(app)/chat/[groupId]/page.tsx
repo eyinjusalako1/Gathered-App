@@ -474,7 +474,7 @@ export default function GroupChatPage({ params }: GroupChatPageProps) {
                         )}
                       </div>
                     )}
-                    <div className="flex flex-col">
+                    <div className="flex flex-col min-w-0">
                       {isDevotionShare ? (
                         <div className="bg-navy-800/40 border border-gold-600/30 rounded-xl p-4 space-y-3 max-w-md">
                           <div className="flex items-center space-x-2">
@@ -546,7 +546,7 @@ export default function GroupChatPage({ params }: GroupChatPageProps) {
                               </div>
                             </div>
                           ) : (
-                            <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
+                            <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</div>
                           )}
                         </div>
                       )}
@@ -619,7 +619,7 @@ export default function GroupChatPage({ params }: GroupChatPageProps) {
             }}
             placeholder={replyingTo ? `Reply to ${replyingTo.user.name}…` : 'Type a message…'}
             className="flex-1 px-4 py-2 bg-navy-900/60 border border-white/10 rounded-lg text-slate-50 placeholder-slate-400 focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
-            disabled={sending}
+            disabled={sending || !!editingMessageId}
           />
           <button
             onClick={handleSendMessage}

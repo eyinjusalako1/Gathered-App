@@ -644,7 +644,7 @@ export default function DMChatPage({ params }: DMChatPageProps) {
                       )}
 
                       {/* Message Bubble */}
-                      <div className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'} max-w-full`}>
+                      <div className={`flex flex-col min-w-0 ${isOwnMessage ? 'items-end' : 'items-start'} max-w-full`}>
                         {showName && (
                           <span className="text-xs text-slate-400 mb-0.5 px-2">
                             {message.sender.name}
@@ -840,7 +840,7 @@ export default function DMChatPage({ params }: DMChatPageProps) {
               rows={1}
               className="flex-1 bg-navy-900/70 border border-gold-500/30 rounded-2xl px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:border-gold-500 resize-none overflow-y-auto text-sm leading-6"
               style={{ maxHeight: '96px' }}
-              disabled={sending || blockDirection !== 'none'}
+              disabled={sending || blockDirection !== 'none' || !!editingMessageId}
             />
             {messageInput.trim() ? (
               <button

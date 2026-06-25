@@ -209,7 +209,7 @@ export default function FaithPostCard({ post, userId, onEdit, onDelete }: Props)
       </div>
 
       {/* Content */}
-      <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+      <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap break-words">{post.content}</p>
       {post.edited_at && (
         <p className="text-[10px] text-slate-500 -mt-1">(edited)</p>
       )}
